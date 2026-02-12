@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #0a0a0a;
+  color: #fff;
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+}
+
+/* kiosk: hide cursor after 3 s of inactivity */
+body.kiosk-idle {
+  cursor: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* smooth row transitions */
+.arrival-row {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.arriving {
+  animation: pulse-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
+
+/* User location blue pulsing dot on map */
+@keyframes user-loc-pulse {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.8); opacity: 0.3; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+.user-loc-ring {
+  animation: user-loc-pulse 2s ease-in-out infinite;
+}
+
+.train-icon-wrapper {
+  background: transparent;
+  border: 0;
+}
+
+.train-icon-core {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  background: rgba(10, 10, 10, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
