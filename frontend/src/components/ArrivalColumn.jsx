@@ -52,7 +52,17 @@ function TrainList({ trains, emptyMsg, isBus }) {
   );
 }
 
-export default function ArrivalColumn({ route, arrivalData, loading, isBus }) {
+function walkMinutes(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  const R = 3958.8;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  const miles = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round((miles / 3) * 60); // ~3 mph walking
+}
+
+export default function ArrivalColumn({ route, arrivalData, loading, isBus, userLat, userLon }) {
   const subwayInfo = SUBWAY_LINES[route];
   const info = subwayInfo || {
     color: isBus ? '#0039A6' : '#808183',
@@ -64,6 +74,7 @@ export default function ArrivalColumn({ route, arrivalData, loading, isBus }) {
   const southTrains = arrivalData?.S?.trains || [];
   const noData = loading && !northTrains.length && !southTrains.length;
   const emptyLabel = isBus ? 'No buses' : 'No trains';
+  const walk = walkMinutes(userLat, userLon, arrivalData?.stationLat, arrivalData?.stationLon);
 
   const northLabel = arrivalData?.N?.label || (isBus ? 'Direction 1' : 'Northbound');
   const southLabel = arrivalData?.S?.label || (isBus ? 'Direction 2' : 'Southbound');
@@ -90,6 +101,9 @@ export default function ArrivalColumn({ route, arrivalData, loading, isBus }) {
         {arrivalData?.station && (
           <span className="text-[10px] text-gray-500 mt-1 truncate max-w-full px-2">
             {arrivalData.station}
+            {walk != null && walk > 0 && (
+              <span className="text-gray-600 ml-1">({walk} min walk)</span>
+            )}
           </span>
         )}
       </div>

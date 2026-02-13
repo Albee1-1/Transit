@@ -4,9 +4,12 @@ import ArrivalColumn from './components/ArrivalColumn';
 import TrainMap from './components/TrainMap';
 import SettingsDrawer from './components/SettingsDrawer';
 import StatusBar from './components/StatusBar';
+import WeatherStrip from './components/WeatherStrip';
+import AlertsBanner from './components/AlertsBanner';
 import { useArrivals } from './hooks/useArrivals';
 import { useBusArrivals } from './hooks/useBusArrivals';
 import { useVehicles } from './hooks/useVehicles';
+import { useCitibike } from './hooks/useCitibike';
 
 const STORAGE_KEY = 'nyc-subway-cfg';
 
@@ -41,6 +44,7 @@ export default function App() {
   const { data, loading, error, lastUpdated } = useArrivals(userLat, userLon, routes);
   const { data: busData, loading: busLoading, error: busError } = useBusArrivals(userLat, userLon, busRoutes);
   const subwayVehicles = useVehicles(routes);
+  const citibikeStations = useCitibike(userLat, userLon);
 
   // Merge subway + bus vehicles for the map
   const busVehicles = busData?.vehicles || [];
@@ -80,9 +84,12 @@ export default function App() {
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-white font-mono select-none">
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-5 py-2 border-b border-gray-800/60 shrink-0">
-        <h1 className="text-xs font-semibold tracking-widest text-gray-500 uppercase truncate max-w-[38%]">
-          {locationLabel || 'NYC Subway'}
-        </h1>
+        <div className="flex items-center gap-3 truncate max-w-[50%]">
+          <h1 className="text-xs font-semibold tracking-widest text-gray-500 uppercase truncate">
+            {locationLabel || 'NYC Transit'}
+          </h1>
+          <WeatherStrip lat={userLat} lon={userLon} />
+        </div>
         <Clock />
         <button
           onClick={() => setDrawerOpen(true)}
@@ -96,6 +103,8 @@ export default function App() {
         </button>
       </header>
 
+      {configured && <AlertsBanner routes={routes} busRoutes={busRoutes} />}
+
       {configured ? (
         <div className="flex-1 flex flex-col min-h-0">
           {/* ── Live train map ─────────────────────────────── */}
@@ -106,6 +115,7 @@ export default function App() {
                 stationLon={userLon}
                 vehicles={vehicles}
                 nearbyStations={nearbyStations}
+                citibikeStations={citibikeStations}
               />
             </div>
           )}
@@ -121,6 +131,8 @@ export default function App() {
                 route={r}
                 arrivalData={data?.arrivals?.[r]}
                 loading={loading}
+                userLat={userLat}
+                userLon={userLon}
               />
             ))}
             {busRoutes.map((r) => (
@@ -130,6 +142,8 @@ export default function App() {
                 arrivalData={busData?.arrivals?.[r]}
                 loading={busLoading}
                 isBus
+                userLat={userLat}
+                userLon={userLon}
               />
             ))}
           </div>

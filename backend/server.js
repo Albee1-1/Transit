@@ -590,6 +590,8 @@ app.get('/api/bus-arrivals', async (req, res) => {
                 N: { label: '', trains: [] },
                 S: { label: '', trains: [] },
                 stop: stop.name,
+                stationLat: stop.lat,
+                stationLon: stop.lon,
               };
             }
             if (!allArrivals[line][dir].label) allArrivals[line][dir].label = dest;
@@ -665,6 +667,8 @@ app.get('/api/bus-arrivals', async (req, res) => {
           N: { label: defaultN, trains: [] },
           S: { label: defaultS, trains: [] },
           stop: routeNearestStop[route]?.name || null,
+          stationLat: routeNearestStop[route]?.lat || null,
+          stationLon: routeNearestStop[route]?.lon || null,
         };
       }
       for (const dir of ['N', 'S']) {
@@ -685,6 +689,128 @@ app.get('/api/bus-arrivals', async (req, res) => {
   } catch (e) {
     console.error('Bus arrivals:', e.message);
     res.status(500).json({ arrivals: {}, timestamp: Math.floor(Date.now() / 1000), errors: [e.message] });
+  }
+});
+
+// ── Weather (Open-Meteo, free, no key) ──────────────────────
+let weatherCache = { data: null, ts: 0 };
+const WEATHER_TTL = 10 * 60_000; // 10 min
+
+app.get('/api/weather', async (req, res) => {
+  const { lat, lon } = req.query;
+  if (!lat || !lon) return res.json({});
+  const key = `${parseFloat(lat).toFixed(2)}:${parseFloat(lon).toFixed(2)}`;
+  if (weatherCache.data && weatherCache.key === key && Date.now() - weatherCache.ts < WEATHER_TTL) {
+    return res.json(weatherCache.data);
+  }
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York`;
+    const r = await fetch(url, { timeout: 5000 });
+    const data = await r.json();
+    const c = data?.current || {};
+    const result = {
+      temp: Math.round(c.temperature_2m || 0),
+      feelsLike: Math.round(c.apparent_temperature || 0),
+      code: c.weather_code || 0,
+      wind: Math.round(c.wind_speed_10m || 0),
+    };
+    weatherCache = { data: result, ts: Date.now(), key };
+    res.json(result);
+  } catch (e) {
+    res.json({});
+  }
+});
+
+// ── MTA Service Alerts ──────────────────────────────────────
+let alertsCache = { data: [], ts: 0 };
+const ALERTS_TTL = 60_000; // 1 min
+
+app.get('/api/alerts', async (_req, res) => {
+  if (alertsCache.data.length && Date.now() - alertsCache.ts < ALERTS_TTL) {
+    return res.json(alertsCache.data);
+  }
+  try {
+    const url = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json';
+    const r = await fetch(url, { timeout: 8000 });
+    const data = await r.json();
+    const entities = data?.entity || [];
+    const now = Math.floor(Date.now() / 1000);
+    const alerts = [];
+    for (const e of entities) {
+      const alert = e.alert;
+      if (!alert) continue;
+      const periods = alert.active_period || [];
+      const active = periods.some((p) => (!p.start || p.start <= now) && (!p.end || p.end >= now));
+      if (!active) continue;
+      const routes = (alert.informed_entity || [])
+        .map((ie) => ie.route_id)
+        .filter(Boolean);
+      const headerText = alert.header_text?.translation?.[0]?.text || '';
+      const descText = alert.description_text?.translation?.[0]?.text || '';
+      if (!headerText && !descText) continue;
+      alerts.push({
+        id: e.id,
+        routes: [...new Set(routes)],
+        header: headerText,
+        description: descText.slice(0, 300),
+        type: alert.transit_realtime?.mercury_alert?.alert_type || 'alert',
+      });
+    }
+    alertsCache = { data: alerts, ts: Date.now() };
+    res.json(alerts);
+  } catch (e) {
+    console.error('Alerts:', e.message);
+    res.json([]);
+  }
+});
+
+// ── Citibike stations ───────────────────────────────────────
+let citibikeCache = { data: [], ts: 0 };
+const CITIBIKE_TTL = 30_000;
+
+app.get('/api/citibike', async (req, res) => {
+  const { lat, lon } = req.query;
+  if (!lat || !lon) return res.json([]);
+  const userLat = parseFloat(lat);
+  const userLon = parseFloat(lon);
+  try {
+    // Fetch station info + status in parallel
+    if (!citibikeCache.data.length || Date.now() - citibikeCache.ts > CITIBIKE_TTL) {
+      const [infoRes, statusRes] = await Promise.all([
+        fetch('https://gbfs.citibikenyc.com/gbfs/en/station_information.json', { timeout: 5000 }),
+        fetch('https://gbfs.citibikenyc.com/gbfs/en/station_status.json', { timeout: 5000 }),
+      ]);
+      const info = await infoRes.json();
+      const status = await statusRes.json();
+      const statusMap = {};
+      for (const s of (status?.data?.stations || [])) statusMap[s.station_id] = s;
+      const stations = (info?.data?.stations || []).map((s) => {
+        const st = statusMap[s.station_id] || {};
+        return {
+          id: s.station_id,
+          name: s.name,
+          lat: s.lat,
+          lon: s.lon,
+          bikes: st.num_bikes_available || 0,
+          ebikes: st.num_ebikes_available || 0,
+          docks: st.num_docks_available || 0,
+          active: st.is_renting === 1,
+        };
+      });
+      citibikeCache = { data: stations, ts: Date.now() };
+    }
+    // Return nearby stations (within ~0.5 mi)
+    const nearby = citibikeCache.data
+      .filter((s) => Math.abs(s.lat - userLat) + Math.abs(s.lon - userLon) < 0.015)
+      .sort((a, b) => {
+        const da = Math.abs(a.lat - userLat) + Math.abs(a.lon - userLon);
+        const db = Math.abs(b.lat - userLat) + Math.abs(b.lon - userLon);
+        return da - db;
+      })
+      .slice(0, 10);
+    res.json(nearby);
+  } catch (e) {
+    res.json([]);
   }
 });
 

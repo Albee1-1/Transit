@@ -244,7 +244,7 @@ async function getArrivalsByLocation(lat, lon, routes) {
     if (r.status === 'fulfilled') {
       const { station, arrivals, errors } = r.value;
       for (const [route, data] of Object.entries(arrivals)) {
-        allArrivals[route] = { ...data, station: station.name };
+        allArrivals[route] = { ...data, station: station.name, stationLat: station.lat, stationLon: station.lon };
       }
       allErrors.push(...errors);
     } else {

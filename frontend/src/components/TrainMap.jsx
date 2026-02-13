@@ -161,7 +161,7 @@ function useAnimatedVehicles(rawVehicles, durationMs = 9000) {
   return animated;
 }
 
-export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStations }) {
+export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStations, citibikeStations }) {
   const center = [stationLat || 40.7484, stationLon || -73.9967];
   const animatedVehicles = useAnimatedVehicles(vehicles, 9000);
 
@@ -203,6 +203,34 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
       {stationLat && stationLon && (
         <UserLocationDot lat={stationLat} lon={stationLon} />
       )}
+
+      {/* Citibike station markers */}
+      {citibikeStations?.map((s) => {
+        const bikeIcon = divIcon({
+          className: 'citibike-icon-wrapper',
+          html: `<div style="background:#0052FF;color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);">${s.bikes}</div>`,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+        return (
+          <Marker
+            key={`citi-${s.id}`}
+            position={[s.lat, s.lon]}
+            icon={bikeIcon}
+            zIndexOffset={800}
+          >
+            <Tooltip
+              direction="top"
+              offset={[0, -8]}
+              className="!bg-gray-900 !border-gray-700 !text-white !text-[10px] !px-1.5 !py-0.5 !rounded"
+            >
+              <span className="font-bold text-blue-400">{s.name}</span>
+              <br />
+              {s.bikes} bikes {s.ebikes > 0 && `(${s.ebikes} e-bikes)`} · {s.docks} docks
+            </Tooltip>
+          </Marker>
+        );
+      })}
 
       {/* Vehicle markers (subway trains + buses) */}
       {animatedVehicles.map((v, i) => {

@@ -21,8 +21,10 @@ export function useBusArrivals(lat, lon, busRoutes) {
       if (json.arrivals) {
         for (const route of Object.keys(json.arrivals)) {
           const entry = json.arrivals[route];
-          if (entry.stop && !entry.station) {
-            entry.station = entry.stop;
+          if (entry.stop && !entry.station) entry.station = entry.stop;
+          if (entry.stationLat == null && entry.stop) {
+            entry.stationLat = entry.stationLat || null;
+            entry.stationLon = entry.stationLon || null;
           }
         }
       }

@@ -1,6 +1,94 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SUBWAY_LINES, ALL_ROUTES } from '../subwayLines';
 
+const PRESETS_KEY = 'nyc-transit-presets';
+
+function loadPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || []; } catch { return []; }
+}
+
+function SavedPresets({ onLoad }) {
+  const [presets, setPresets] = useState(loadPresets());
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+
+  function savePreset() {
+    if (!name.trim()) return;
+    try {
+      const raw = localStorage.getItem('nyc-subway-cfg');
+      if (!raw) return;
+      const cfg = JSON.parse(raw);
+      const updated = [...presets.filter((p) => p.name !== name.trim()), { name: name.trim(), ...cfg }];
+      localStorage.setItem(PRESETS_KEY, JSON.stringify(updated));
+      setPresets(updated);
+      setSaving(false);
+      setName('');
+    } catch {}
+  }
+
+  function deletePreset(n) {
+    const updated = presets.filter((p) => p.name !== n);
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(updated));
+    setPresets(updated);
+  }
+
+  if (!presets.length && !saving) {
+    return (
+      <div className="px-5 pt-3 pb-1">
+        <button
+          onClick={() => setSaving(true)}
+          className="text-xs text-blue-400 hover:text-blue-300"
+        >
+          + Save current as preset
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-5 pt-3 pb-1">
+      <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+        Saved Locations
+      </label>
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {presets.map((p) => (
+          <div key={p.name} className="flex items-center gap-1">
+            <button
+              onClick={() => onLoad(p)}
+              className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-xs"
+            >
+              {p.name}
+            </button>
+            <button onClick={() => deletePreset(p.name)} className="text-gray-600 hover:text-red-400 text-xs">&times;</button>
+          </div>
+        ))}
+      </div>
+      {saving ? (
+        <div className="mt-1.5 flex gap-1.5">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && savePreset()}
+            placeholder="e.g. Home, Work"
+            className="flex-1 bg-white/5 border border-gray-700 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none"
+            autoFocus
+          />
+          <button onClick={savePreset} className="px-2 py-1 bg-blue-600 rounded text-xs text-white">Save</button>
+          <button onClick={() => setSaving(false)} className="text-gray-500 text-xs">Cancel</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setSaving(true)}
+          className="mt-1.5 text-xs text-blue-400 hover:text-blue-300"
+        >
+          + Save current as preset
+        </button>
+      )}
+    </div>
+  );
+}
+
 function sortRoutes(routes) {
   return [...routes].sort((a, b) => {
     const ai = ALL_ROUTES.indexOf(a);
@@ -253,6 +341,15 @@ export default function SettingsDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {/* ── Saved presets ──────────────────────────────────── */}
+          <SavedPresets onLoad={(cfg) => {
+            setLat(cfg.lat);
+            setLon(cfg.lon);
+            setLocationLabel(cfg.locationLabel || '');
+            setPickedRoutes(cfg.routes || []);
+            setPickedBusRoutes(cfg.busRoutes || []);
+          }} />
+
           {/* ── Location ─────────────────────────────────────── */}
           <div className="px-5 pt-4 pb-2">
             <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
