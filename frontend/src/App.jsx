@@ -5,6 +5,7 @@ import TrainMap from './components/TrainMap';
 import SettingsDrawer from './components/SettingsDrawer';
 import StatusBar from './components/StatusBar';
 import { useArrivals } from './hooks/useArrivals';
+import { useBusArrivals } from './hooks/useBusArrivals';
 import { useVehicles } from './hooks/useVehicles';
 
 const STORAGE_KEY = 'nyc-subway-cfg';
@@ -17,8 +18,8 @@ function loadSaved() {
       if (
         cfg.lat &&
         cfg.lon &&
-        Array.isArray(cfg.routes) &&
-        cfg.routes.length >= 1
+        ((Array.isArray(cfg.routes) && cfg.routes.length >= 1) ||
+         (Array.isArray(cfg.busRoutes) && cfg.busRoutes.length >= 1))
       ) {
         return cfg;
       }
@@ -33,11 +34,19 @@ export default function App() {
   const [userLon, setUserLon] = useState(saved?.lon || 0);
   const [locationLabel, setLocationLabel] = useState(saved?.locationLabel || '');
   const [routes, setRoutes] = useState(saved?.routes || []);
+  const [busRoutes, setBusRoutes] = useState(saved?.busRoutes || []);
   const [drawerOpen, setDrawerOpen] = useState(!saved);
   const [stations, setStations] = useState([]);
 
   const { data, loading, error, lastUpdated } = useArrivals(userLat, userLon, routes);
-  const vehicles = useVehicles(routes);
+  const { data: busData, loading: busLoading, error: busError } = useBusArrivals(userLat, userLon, busRoutes);
+  const subwayVehicles = useVehicles(routes);
+
+  // Merge subway + bus vehicles for the map
+  const busVehicles = busData?.vehicles || [];
+  const vehicles = useMemo(() => {
+    return [...(subwayVehicles || []), ...busVehicles];
+  }, [subwayVehicles, busVehicles]);
 
   useEffect(() => {
     fetch('/api/stations')
@@ -60,11 +69,12 @@ export default function App() {
     setUserLon(cfg.lon);
     setLocationLabel(cfg.locationLabel);
     setRoutes(cfg.routes);
+    setBusRoutes(cfg.busRoutes || []);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
     setDrawerOpen(false);
   }
 
-  const configured = userLat && userLon && routes.length >= 1;
+  const configured = userLat && userLon && (routes.length >= 1 || busRoutes.length >= 1);
 
   return (
     <div className="h-screen flex flex-col bg-[#0a0a0a] text-white font-mono select-none">
@@ -113,6 +123,15 @@ export default function App() {
                 loading={loading}
               />
             ))}
+            {busRoutes.map((r) => (
+              <ArrivalColumn
+                key={`bus-${r}`}
+                route={r}
+                arrivalData={busData?.arrivals?.[r]}
+                loading={busLoading}
+                isBus
+              />
+            ))}
           </div>
         </div>
       ) : (
@@ -126,7 +145,7 @@ export default function App() {
         </main>
       )}
 
-      <StatusBar lastUpdated={lastUpdated} error={error} loading={loading} />
+      <StatusBar lastUpdated={lastUpdated} error={error || busError} loading={loading || busLoading} />
 
       <SettingsDrawer
         open={drawerOpen}
@@ -134,6 +153,7 @@ export default function App() {
         currentLat={userLat}
         currentLon={userLon}
         currentRoutes={routes}
+        currentBusRoutes={busRoutes}
         onSave={handleSave}
       />
     </div>

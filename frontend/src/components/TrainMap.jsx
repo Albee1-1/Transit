@@ -204,15 +204,16 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
         <UserLocationDot lat={stationLat} lon={stationLon} />
       )}
 
-      {/* Train vehicle markers (colored by line) */}
+      {/* Vehicle markers (subway trains + buses) */}
       {animatedVehicles.map((v, i) => {
         const line = SUBWAY_LINES[v.routeId];
-        const color = line?.color || '#808183';
-        const textColor = line?.text || '#fff';
-        const arrivingClass = v.status === 'INCOMING_AT' ? 'arriving' : '';
-        const trainIcon = divIcon({
+        const isBus = !line && v.color;
+        const color = v.color || line?.color || '#808183';
+        const textColor = v.textColor || line?.text || '#fff';
+        const emoji = isBus ? '🚌' : '🚆';
+        const vehicleIcon = divIcon({
           className: 'train-icon-wrapper',
-          html: `<div class="train-icon-core" style="background:${color};color:${textColor};transform: rotate(${Math.round(v.heading || 0)}deg);">🚆</div>`,
+          html: `<div class="train-icon-core" style="background:${color};color:${textColor};transform: rotate(${Math.round(v.heading || v.bearing || 0)}deg);">${emoji}</div>`,
           iconSize: [26, 26],
           iconAnchor: [13, 13],
         });
@@ -221,10 +222,9 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
           <Marker
             key={v.vehicleId || `${v.routeId}-${v.direction}-${i}`}
             position={[v.lat, v.lon]}
-            icon={trainIcon}
+            icon={vehicleIcon}
             zIndexOffset={1200}
             opacity={1}
-            className={arrivingClass}
           >
             <Tooltip
               direction="top"
@@ -232,12 +232,12 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
               className="!bg-gray-900 !border-gray-700 !text-white !text-[10px] !px-1.5 !py-0.5 !rounded !font-bold"
             >
               <span
-                className="inline-flex items-center justify-center w-4 h-4 rounded-full mr-1.5 text-[9px] font-bold"
-                style={{ backgroundColor: color, color: line?.text || '#fff' }}
+                className="inline-flex items-center justify-center h-4 px-1 rounded mr-1.5 text-[9px] font-bold"
+                style={{ backgroundColor: color, color: textColor }}
               >
                 {line?.name || v.routeId}
               </span>
-              {v.routeId} → {v.nextStop}
+              {v.routeId} → {v.destination || v.nextStop}
             </Tooltip>
           </Marker>
         );

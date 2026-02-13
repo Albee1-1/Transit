@@ -5,7 +5,13 @@ function fmt(min) {
   return `${min} min`;
 }
 
-function TrainList({ trains, emptyMsg }) {
+function fmtBus(t) {
+  if (t.minutes <= 0) return 'NOW';
+  if (t.minutes < 99) return `${t.minutes} min`;
+  return '---';
+}
+
+function TrainList({ trains, emptyMsg, isBus }) {
   if (!trains || trains.length === 0) {
     return (
       <p className="text-gray-600 text-[11px] text-center py-4">{emptyMsg}</p>
@@ -37,7 +43,7 @@ function TrainList({ trains, emptyMsg }) {
                     : 'text-gray-300 text-sm'
               }`}
             >
-              {fmt(t.minutes)}
+              {isBus ? fmtBus(t) : fmt(t.minutes)}
             </span>
           </div>
         );
@@ -46,29 +52,41 @@ function TrainList({ trains, emptyMsg }) {
   );
 }
 
-export default function ArrivalColumn({ route, arrivalData, loading }) {
-  const info = SUBWAY_LINES[route] || {
-    color: '#808183',
+export default function ArrivalColumn({ route, arrivalData, loading, isBus }) {
+  const subwayInfo = SUBWAY_LINES[route];
+  const info = subwayInfo || {
+    color: isBus ? '#0039A6' : '#808183',
     text: '#FFF',
     name: route,
   };
 
-  const northLabel = arrivalData?.N?.label || 'Northbound';
-  const southLabel = arrivalData?.S?.label || 'Southbound';
   const northTrains = arrivalData?.N?.trains || [];
   const southTrains = arrivalData?.S?.trains || [];
   const noData = loading && !northTrains.length && !southTrains.length;
+  const emptyLabel = isBus ? 'No buses' : 'No trains';
+
+  const northLabel = arrivalData?.N?.label || (isBus ? 'Direction 1' : 'Northbound');
+  const southLabel = arrivalData?.S?.label || (isBus ? 'Direction 2' : 'Southbound');
 
   return (
     <div className="flex flex-col h-full border-r border-gray-800/60 last:border-r-0 overflow-hidden">
-      {/* ── Route badge + station name ────────────────────── */}
+      {/* ── Route badge + station/stop name ──────────────── */}
       <div className="flex flex-col items-center justify-center py-3 border-b border-gray-800/60 shrink-0">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/40"
-          style={{ backgroundColor: info.color, color: info.text }}
-        >
-          {info.name}
-        </div>
+        {isBus ? (
+          <div
+            className="h-10 px-3 rounded-lg flex items-center justify-center text-sm font-bold shadow-lg shadow-black/40"
+            style={{ backgroundColor: info.color, color: info.text }}
+          >
+            {info.name}
+          </div>
+        ) : (
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg shadow-black/40"
+            style={{ backgroundColor: info.color, color: info.text }}
+          >
+            {info.name}
+          </div>
+        )}
         {arrivalData?.station && (
           <span className="text-[10px] text-gray-500 mt-1 truncate max-w-full px-2">
             {arrivalData.station}
@@ -83,7 +101,6 @@ export default function ArrivalColumn({ route, arrivalData, loading }) {
       ) : (
         /* ── Two direction sub-columns side by side ───────── */
         <div className="flex-1 grid grid-cols-2 min-h-0 overflow-hidden">
-          {/* Northbound */}
           <div className="flex flex-col border-r border-gray-800/40 overflow-hidden">
             <div className="px-2 py-2 border-b border-gray-800/40 shrink-0">
               <div className="flex items-center gap-1">
@@ -94,11 +111,10 @@ export default function ArrivalColumn({ route, arrivalData, loading }) {
               </div>
             </div>
             <div className="flex-1 px-1 py-1 overflow-hidden">
-              <TrainList trains={northTrains} emptyMsg="No trains" />
+              <TrainList trains={northTrains} emptyMsg={emptyLabel} isBus={isBus} />
             </div>
           </div>
 
-          {/* Southbound */}
           <div className="flex flex-col overflow-hidden">
             <div className="px-2 py-2 border-b border-gray-800/40 shrink-0">
               <div className="flex items-center gap-1">
@@ -109,7 +125,7 @@ export default function ArrivalColumn({ route, arrivalData, loading }) {
               </div>
             </div>
             <div className="flex-1 px-1 py-1 overflow-hidden">
-              <TrainList trains={southTrains} emptyMsg="No trains" />
+              <TrainList trains={southTrains} emptyMsg={emptyLabel} isBus={isBus} />
             </div>
           </div>
         </div>

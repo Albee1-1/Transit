@@ -381,6 +381,313 @@ app.get('/api/geocode', async (req, res) => {
   }
 });
 
+// ── Bus: all routes + nearby stops ───────────────────────────
+const busStopsCache = {};
+const BUS_CACHE_TTL = 60_000; // 1 minute
+
+async function fetchNearbyBusStops(lat, lon) {
+  const key = `${lat.toFixed(4)}:${lon.toFixed(4)}`;
+  const cached = busStopsCache[key];
+  if (cached && Date.now() - cached.ts < BUS_CACHE_TTL) return cached.data;
+
+  const params = new URLSearchParams({
+    key: config.busApiKey,
+    lat: String(lat),
+    lon: String(lon),
+    latSpan: '0.02',
+    lonSpan: '0.02',
+  });
+  const url = `https://bustime.mta.info/api/where/stops-for-location.json?${params}`;
+  const r = await fetch(url, { timeout: 8000 });
+  if (!r.ok) throw new Error(`Bus stops API ${r.status}`);
+  const data = await r.json();
+  const stops = data?.data?.stops || [];
+  busStopsCache[key] = { data: stops, ts: Date.now() };
+  return stops;
+}
+
+// Cache all MTA bus routes (refreshed every 24h)
+let allBusRoutesCache = { data: [], ts: 0 };
+const ALL_ROUTES_TTL = 24 * 60 * 60_000;
+
+async function fetchAllBusRoutes() {
+  if (allBusRoutesCache.data.length && Date.now() - allBusRoutesCache.ts < ALL_ROUTES_TTL) {
+    return allBusRoutesCache.data;
+  }
+  const agencies = ['MTA%20NYCT', 'MTABC'];
+  const all = [];
+  const seen = new Set();
+  await Promise.all(
+    agencies.map(async (agency) => {
+      try {
+        const url = `https://bustime.mta.info/api/where/routes-for-agency/${agency}.json?key=${config.busApiKey}`;
+        const r = await fetch(url, { timeout: 10000 });
+        if (!r.ok) return;
+        const data = await r.json();
+        for (const route of (data?.data?.list || [])) {
+          const id = route.shortName || route.id;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          all.push({
+            id,
+            fullId: route.id, // e.g. "MTA NYCT_Q18"
+            name: route.longName || id,
+            color: route.color ? `#${route.color}` : '#0039A6',
+            textColor: route.textColor ? `#${route.textColor}` : '#FFF',
+          });
+        }
+      } catch { /* skip agency on error */ }
+    }),
+  );
+  all.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  allBusRoutesCache = { data: all, ts: Date.now() };
+  return all;
+}
+
+app.get('/api/bus-routes', async (req, res) => {
+  if (!config.busApiKey) return res.json([]);
+  try {
+    const routes = await fetchAllBusRoutes();
+    res.json(routes);
+  } catch (e) {
+    console.error('Bus routes:', e.message);
+    res.json([]);
+  }
+});
+
+// ── Bus: stops-for-route fallback ────────────────────────────
+const routeStopsCache = {};
+
+async function fetchStopsForRoute(fullRouteId) {
+  if (!fullRouteId) return [];
+  const cached = routeStopsCache[fullRouteId];
+  if (cached && Date.now() - cached.ts < BUS_CACHE_TTL * 5) return cached.data;
+
+  const url = `https://bustime.mta.info/api/where/stops-for-route/${encodeURIComponent(fullRouteId)}.json?key=${config.busApiKey}&includePolylines=false&version=2`;
+  const r = await fetch(url, { timeout: 10000 });
+  if (!r.ok) return [];
+  const data = await r.json();
+  const stops = data?.data?.references?.stops || [];
+  routeStopsCache[fullRouteId] = { data: stops, ts: Date.now() };
+  return stops;
+}
+
+// ── Bus: arrivals ────────────────────────────────────────────
+function haversineMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+app.get('/api/bus-arrivals', async (req, res) => {
+  const { lat, lon, routes: rp } = req.query;
+  if (!lat || !lon || !rp || !config.busApiKey) {
+    return res.status(400).json({ arrivals: {}, timestamp: Math.floor(Date.now() / 1000), errors: ['Missing params or bus API key'] });
+  }
+  const requestedRoutes = rp.split(',').filter(Boolean);
+  const userLat = parseFloat(lat);
+  const userLon = parseFloat(lon);
+
+  try {
+    const allRoutes = await fetchAllBusRoutes();
+    const routeInfoMap = {};
+    for (const r of allRoutes) routeInfoMap[r.id] = r;
+
+    const now = Date.now();
+    const allArrivals = {};
+    const allVehicles = [];
+    const errors = [];
+
+    // Step 1: Find nearest stop to user for each route
+    // First try nearby stops (most reliable IDs), then fall back to stops-for-route
+    const nearbyStops = await fetchNearbyBusStops(userLat, userLon);
+    const routeNearestStop = {};
+
+    // Check nearby stops first
+    for (const route of requestedRoutes) {
+      let best = null, bestDist = Infinity;
+      for (const stop of nearbyStops) {
+        const serves = (stop.routes || []).some((r) => (r.shortName || r.id) === route);
+        if (!serves) continue;
+        const d = haversineMiles(userLat, userLon, stop.lat, stop.lon);
+        if (d < bestDist) { bestDist = d; best = stop; }
+      }
+      if (best) routeNearestStop[route] = best;
+    }
+
+    // Fallback for routes not found nearby: use stops-for-route
+    const missingRoutes = requestedRoutes.filter((r) => !routeNearestStop[r]);
+    if (missingRoutes.length) {
+      await Promise.allSettled(
+        missingRoutes.map(async (route) => {
+          const info = routeInfoMap[route];
+          if (!info?.fullId) return;
+          const stops = await fetchStopsForRoute(info.fullId);
+          if (!stops.length) return;
+          let best = null, bestDist = Infinity;
+          for (const s of stops) {
+            const d = haversineMiles(userLat, userLon, s.lat, s.lon);
+            if (d < bestDist) { bestDist = d; best = s; }
+          }
+          if (best) routeNearestStop[route] = best;
+        }),
+      );
+    }
+
+    // Step 2: Fetch stop-monitoring (real ETAs at user's stop) + vehicle-monitoring (bus positions) in parallel
+    const stopMonitorPromises = [];
+    const vehicleMonitorPromises = [];
+
+    // Dedupe stops — multiple routes may share a stop
+    const uniqueMonitorStops = {};
+    for (const [route, stop] of Object.entries(routeNearestStop)) {
+      if (!uniqueMonitorStops[stop.id]) uniqueMonitorStops[stop.id] = { stop, routes: new Set() };
+      uniqueMonitorStops[stop.id].routes.add(route);
+    }
+
+    // Stop-monitoring: ETAs at user's nearest stop
+    for (const { stop, routes: stopRoutes } of Object.values(uniqueMonitorStops)) {
+      stopMonitorPromises.push(
+        (async () => {
+          const params = new URLSearchParams({
+            key: config.busApiKey,
+            MonitoringRef: stop.id,
+            MaximumStopVisits: '12',
+          });
+          const r = await fetch(`https://bustime.mta.info/api/siri/stop-monitoring.json?${params}`, { timeout: 10000 });
+          if (!r.ok) throw new Error(`Stop-monitoring ${r.status}`);
+          const data = await r.json();
+          const deliveries = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery || [];
+          const visits = deliveries.flatMap((d) => d.MonitoredStopVisit || []);
+
+          for (const visit of visits) {
+            const j = visit.MonitoredVehicleJourney || {};
+            const line = j.PublishedLineName || '';
+            if (!stopRoutes.has(line)) continue;
+
+            const dest = j.DestinationName || 'Unknown';
+            const dirRef = String(j.DirectionRef || '0');
+            const dir = dirRef === '1' ? 'S' : 'N';
+            const call = j.MonitoredCall || {};
+            const eta = call.ExpectedArrivalTime;
+            const ext = call.Extensions?.Distances || {};
+            const stopsAway = ext.StopsFromCall ?? null;
+
+            let minutes = null;
+            if (eta) {
+              minutes = Math.round((new Date(eta).getTime() - now) / 60000);
+              if (minutes < 0) minutes = 0;
+            }
+
+            if (!allArrivals[line]) {
+              allArrivals[line] = {
+                N: { label: '', trains: [] },
+                S: { label: '', trains: [] },
+                stop: stop.name,
+              };
+            }
+            if (!allArrivals[line][dir].label) allArrivals[line][dir].label = dest;
+
+            // Only include arrivals with a real ETA
+            if (minutes != null) {
+              allArrivals[line][dir].trains.push({
+                minutes,
+                destination: dest,
+                arrivalTime: Math.floor(new Date(eta).getTime() / 1000),
+                tripId: j.VehicleRef || '',
+                stopsAway,
+              });
+            }
+          }
+        })().catch((e) => errors.push(e.message)),
+      );
+    }
+
+    // Vehicle-monitoring: bus positions for the map
+    for (const route of requestedRoutes) {
+      const info = routeInfoMap[route];
+      if (!info?.fullId) continue;
+      vehicleMonitorPromises.push(
+        (async () => {
+          const params = new URLSearchParams({
+            key: config.busApiKey,
+            LineRef: info.fullId,
+          });
+          const r = await fetch(`https://bustime.mta.info/api/siri/vehicle-monitoring.json?${params}`, { timeout: 10000 });
+          if (!r.ok) return;
+          const data = await r.json();
+          const deliveries = data?.Siri?.ServiceDelivery?.VehicleMonitoringDelivery || [];
+          const activities = deliveries.flatMap((d) => d.VehicleActivity || []);
+
+          for (const activity of activities) {
+            const j = activity.MonitoredVehicleJourney || {};
+            const loc = j.VehicleLocation || {};
+            if (!loc.Latitude || !loc.Longitude) continue;
+            const dest = j.DestinationName || '';
+            const dirRef = String(j.DirectionRef || '0');
+            const nextStop = j.MonitoredCall?.StopPointName || '';
+
+            allVehicles.push({
+              routeId: route,
+              vehicleId: j.VehicleRef || '',
+              lat: loc.Latitude,
+              lon: loc.Longitude,
+              direction: dirRef === '1' ? 'S' : 'N',
+              destination: dest,
+              nextStop,
+              bearing: Number(loc.Bearing || 0),
+              color: info.color,
+              textColor: info.textColor,
+            });
+          }
+        })().catch(() => {}),
+      );
+    }
+
+    await Promise.all([...stopMonitorPromises, ...vehicleMonitorPromises]);
+
+    // Sort, dedupe, cap at 4 per direction, fill labels
+    for (const route of requestedRoutes) {
+      const info = routeInfoMap[route];
+      const longName = info?.name || '';
+      const nameParts = longName.split(/\s*[-–—]\s*/);
+      const defaultN = nameParts[0] || route;
+      const defaultS = nameParts[1] || route;
+
+      if (!allArrivals[route]) {
+        allArrivals[route] = {
+          N: { label: defaultN, trains: [] },
+          S: { label: defaultS, trains: [] },
+          stop: routeNearestStop[route]?.name || null,
+        };
+      }
+      for (const dir of ['N', 'S']) {
+        if (!allArrivals[route][dir].label) {
+          allArrivals[route][dir].label = dir === 'N' ? defaultN : defaultS;
+        }
+        allArrivals[route][dir].trains.sort((a, b) => a.arrivalTime - b.arrivalTime);
+        const seen = new Set();
+        allArrivals[route][dir].trains = allArrivals[route][dir].trains.filter((t) => {
+          if (!t.tripId || !seen.has(t.tripId)) { seen.add(t.tripId); return true; }
+          return false;
+        });
+        allArrivals[route][dir].trains = allArrivals[route][dir].trains.slice(0, 4);
+      }
+    }
+
+    res.json({ arrivals: allArrivals, vehicles: allVehicles, timestamp: Math.floor(now / 1000), errors });
+  } catch (e) {
+    console.error('Bus arrivals:', e.message);
+    res.status(500).json({ arrivals: {}, timestamp: Math.floor(Date.now() / 1000), errors: [e.message] });
+  }
+});
+
 // ── SPA fallback ─────────────────────────────────────────────
 app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
@@ -388,9 +695,10 @@ app.get('*', (_req, res) => {
 
 app.listen(config.port, '0.0.0.0', () => {
   console.log('');
-  console.log('  NYC Subway Transit Display');
-  console.log(`  Port    : ${config.port}`);
-  console.log(`  API key : ${config.apiKey ? 'set' : 'not set (public feeds)'}`);
-  console.log(`  LocationIQ: ${config.locationIqToken ? 'set' : 'not set'}`);
+  console.log('  NYC Transit Display');
+  console.log(`  Port       : ${config.port}`);
+  console.log(`  Subway key : ${config.apiKey ? 'set' : 'not set (public feeds)'}`);
+  console.log(`  Bus key    : ${config.busApiKey ? 'set' : 'not set'}`);
+  console.log(`  LocationIQ : ${config.locationIqToken ? 'set' : 'not set'}`);
   console.log('');
 });

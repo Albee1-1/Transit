@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { SUBWAY_LINES, ALL_ROUTES } from '../subwayLines';
 
 function sortRoutes(routes) {
@@ -18,6 +18,7 @@ export default function SettingsDrawer({
   currentLat,
   currentLon,
   currentRoutes,
+  currentBusRoutes,
   onSave,
 }) {
   const [lat, setLat] = useState(null);
@@ -26,6 +27,10 @@ export default function SettingsDrawer({
   const [locationLabel, setLocationLabel] = useState('');
   const [geoStatus, setGeoStatus] = useState('');
   const [pickedRoutes, setPickedRoutes] = useState([]);
+  const [pickedBusRoutes, setPickedBusRoutes] = useState([]);
+  const [allBusRoutes, setAllBusRoutes] = useState([]);
+  const [busRoutesLoading, setBusRoutesLoading] = useState(false);
+  const [busFilter, setBusFilter] = useState('');
   const [addressResults, setAddressResults] = useState([]);
   const [searchingAddress, setSearchingAddress] = useState(false);
   const [activeAddressIndex, setActiveAddressIndex] = useState(-1);
@@ -37,6 +42,7 @@ export default function SettingsDrawer({
     setLat(currentLat || null);
     setLon(currentLon || null);
     setPickedRoutes(currentRoutes || []);
+    setPickedBusRoutes(currentBusRoutes || []);
     setGeoStatus('');
     setAddress('');
     setLocationLabel('');
@@ -44,7 +50,32 @@ export default function SettingsDrawer({
     setSearchingAddress(false);
     setActiveAddressIndex(-1);
     setAddressError('');
-  }, [open, currentLat, currentLon, currentRoutes]);
+  }, [open, currentLat, currentLon, currentRoutes, currentBusRoutes]);
+
+  // Fetch all MTA bus routes when drawer opens
+  useEffect(() => {
+    if (!open) return;
+    if (allBusRoutes.length) return; // already loaded
+    let cancelled = false;
+    setBusRoutesLoading(true);
+    fetch('/api/bus-routes')
+      .then((r) => r.json())
+      .then((routes) => {
+        if (!cancelled && Array.isArray(routes)) setAllBusRoutes(routes);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setBusRoutesLoading(false); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Filtered bus routes based on search
+  const filteredBusRoutes = useMemo(() => {
+    if (!busFilter.trim()) return allBusRoutes;
+    const q = busFilter.trim().toLowerCase();
+    return allBusRoutes.filter(
+      (r) => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q),
+    );
+  }, [allBusRoutes, busFilter]);
 
   // Debounced address search
   useEffect(() => {
@@ -186,16 +217,24 @@ export default function SettingsDrawer({
     });
   }
 
+  function toggleBusRoute(id) {
+    setPickedBusRoutes((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
+  }
+
   const hasLocation = lat != null && lon != null && lat !== 0 && lon !== 0;
-  const canSave = hasLocation && pickedRoutes.length >= 1;
+  const canSave = hasLocation && (pickedRoutes.length >= 1 || pickedBusRoutes.length >= 1);
 
   function handleSave() {
     if (!canSave) return;
     onSave({
       lat,
       lon,
-      locationLabel: locationLabel || 'NYC Subway',
+      locationLabel: locationLabel || 'NYC Transit',
       routes: pickedRoutes,
+      busRoutes: pickedBusRoutes,
     });
   }
 
@@ -332,6 +371,92 @@ export default function SettingsDrawer({
               Nearest station for each line will be used automatically.
             </p>
           </div>
+
+          {/* ── Bus lines ─────────────────────────────────────── */}
+          <div className="px-5 pt-3 pb-2">
+            <label className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+              Bus Lines ({pickedBusRoutes.length} selected)
+            </label>
+            {busRoutesLoading ? (
+              <p className="text-xs text-gray-500 mt-2">Loading bus routes...</p>
+            ) : allBusRoutes.length === 0 ? (
+              <p className="text-xs text-gray-600 mt-2">No bus routes available.</p>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={busFilter}
+                  onChange={(e) => setBusFilter(e.target.value)}
+                  placeholder="Search buses (e.g. B46, Flatbush)"
+                  className="mt-2 w-full bg-white/5 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => setPickedBusRoutes([])}
+                    className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/15 border border-gray-700 text-xs text-gray-300"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {/* Selected bus pills (always visible) */}
+                {pickedBusRoutes.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {pickedBusRoutes.map((id) => {
+                      const r = allBusRoutes.find((b) => b.id === id);
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => toggleBusRoute(id)}
+                          title={r?.name || id}
+                          className="h-8 px-2 rounded-lg flex items-center justify-center text-xs font-bold ring-2 ring-white ring-offset-1 ring-offset-[#111] scale-105"
+                          style={{
+                            backgroundColor: r?.color || '#0039A6',
+                            color: r?.textColor || '#FFF',
+                          }}
+                        >
+                          {id}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Filtered routes list */}
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-800 bg-black/20">
+                  {filteredBusRoutes.length === 0 ? (
+                    <p className="text-xs text-gray-600 text-center py-3">No matches</p>
+                  ) : (
+                    filteredBusRoutes.map((r) => {
+                      const on = pickedBusRoutes.includes(r.id);
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => toggleBusRoute(r.id)}
+                          className={`w-full text-left flex items-center gap-2.5 px-3 py-2 border-b border-gray-800/50 last:border-b-0 transition-colors ${
+                            on ? 'bg-white/10' : 'hover:bg-white/5'
+                          }`}
+                        >
+                          <span
+                            className="shrink-0 h-7 px-2 rounded flex items-center justify-center text-[11px] font-bold"
+                            style={{
+                              backgroundColor: r.color || '#0039A6',
+                              color: r.textColor || '#FFF',
+                            }}
+                          >
+                            {r.id}
+                          </span>
+                          <span className="text-xs text-gray-400 truncate flex-1">{r.name}</span>
+                          {on && <span className="text-green-400 text-xs shrink-0">&#10003;</span>}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Nearest stop for each bus will be used automatically.
+                </p>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="px-5 py-4 border-t border-gray-700 shrink-0">
@@ -346,8 +471,8 @@ export default function SettingsDrawer({
           >
             {!hasLocation
               ? 'Set your location first'
-              : pickedRoutes.length === 0
-                ? 'Pick at least 1 train'
+              : (pickedRoutes.length === 0 && pickedBusRoutes.length === 0)
+                ? 'Pick at least 1 line'
                 : 'Save & Close'}
           </button>
         </div>

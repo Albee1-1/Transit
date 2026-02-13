@@ -1,5 +1,5 @@
 // ============================================================
-// NYC SUBWAY TRANSIT DISPLAY — SERVER CONFIGURATION
+// NYC TRANSIT DISPLAY — SERVER CONFIGURATION
 // ============================================================
 // Station selection is now done in the UI (Settings drawer).
 // This file only controls server-level settings.
@@ -8,6 +8,7 @@
 module.exports = {
   port: process.env.PORT || 3001,
   apiKey: process.env.MTA_API_KEY || '',
+  busApiKey: process.env.MTA_BUS_KEY || '',
   locationIqToken: process.env.LOCATIONIQ_TOKEN || '',
 
   cacheTTL: 10_000,          // ms – how long to cache each protobuf feed
