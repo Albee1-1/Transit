@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#0a0a0a"/>
+  <circle cx="96" cy="80" r="40" fill="#0039A6" stroke="#fff" stroke-width="4"/>
+  <text x="96" y="95" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="40" fill="#fff">MTA</text>
+  <rect x="56" y="130" width="80" height="8" rx="4" fill="#EE352E"/>
+  <rect x="56" y="145" width="60" height="8" rx="4" fill="#00933C"/>
+  <rect x="56" y="160" width="40" height="8" rx="4" fill="#FCCC0A"/>
+</svg>

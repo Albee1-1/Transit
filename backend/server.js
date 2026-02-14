@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const compression = require('compression');
 const cors = require('cors');
 const path = require('path');
 const fetch = require('node-fetch');
@@ -7,10 +8,152 @@ const config = require('./config');
 const { getStations, getArrivals, getArrivalsByLocation, getVehiclePositions } = require('./feedManager');
 
 const app = express();
+app.use(compression());
 app.use(cors());
 
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDist));
+app.use(express.static(frontendDist, {
+  maxAge: '7d',
+  etag: true,
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+
+// ── Health check ──────────────────────────────────────────────
+const startTime = Date.now();
+app.get('/api/health', (_req, res) => {
+  const uptimeMs = Date.now() - startTime;
+  const stations = getStations();
+  res.json({
+    status: 'ok',
+    uptime: `${Math.floor(uptimeMs / 60000)}m`,
+    stations: stations.length,
+    busKey: !!config.busApiKey,
+    subwayKey: !!config.apiKey,
+    memory: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+  });
+});
+
+// ── Service status (all lines at a glance) ───────────────────
+let serviceStatusCache = { data: null, ts: 0 };
+const SERVICE_STATUS_TTL = 60_000;
+
+app.get('/api/service-status', async (_req, res) => {
+  if (serviceStatusCache.data && Date.now() - serviceStatusCache.ts < SERVICE_STATUS_TTL) {
+    return res.json(serviceStatusCache.data);
+  }
+  try {
+    const url = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json';
+    const r = await fetch(url, { timeout: 8000 });
+    const data = await r.json();
+    const entities = data?.entity || [];
+    const now = Math.floor(Date.now() / 1000);
+    const routeAlerts = {};
+
+    for (const e of entities) {
+      const alert = e.alert;
+      if (!alert) continue;
+      const periods = alert.active_period || [];
+      const active = periods.some((p) => (!p.start || p.start <= now) && (!p.end || p.end >= now));
+      if (!active) continue;
+
+      const headerText = (alert.header_text?.translation?.[0]?.text || '').toLowerCase();
+      const alertType = alert.transit_realtime?.mercury_alert?.alert_type || '';
+      let severity = 'info';
+      if (/suspend|no.*service/i.test(headerText)) severity = 'suspended';
+      else if (/delay|slow/i.test(headerText)) severity = 'delays';
+      else if (/planned|schedule|change/i.test(headerText) || alertType === 'Planned Work') severity = 'planned';
+
+      for (const ie of (alert.informed_entity || [])) {
+        const rid = ie.route_id;
+        if (!rid) continue;
+        if (!routeAlerts[rid] || severityRank(severity) > severityRank(routeAlerts[rid])) {
+          routeAlerts[rid] = severity;
+        }
+      }
+    }
+
+    const allRoutes = ['1','2','3','4','5','6','7','A','C','E','B','D','F','M','G','J','Z','L','N','Q','R','W','S','SI'];
+    const result = {};
+    for (const r of allRoutes) {
+      result[r] = routeAlerts[r] || 'good';
+    }
+    serviceStatusCache = { data: result, ts: Date.now() };
+    res.json(result);
+  } catch (e) {
+    res.json({});
+  }
+});
+
+function severityRank(s) {
+  return { good: 0, info: 1, planned: 2, delays: 3, suspended: 4 }[s] || 0;
+}
+
+// ── Elevator / Escalator status ──────────────────────────────
+let elevatorCache = { data: [], ts: 0 };
+const ELEVATOR_TTL = 5 * 60_000;
+
+app.get('/api/elevator-status', async (_req, res) => {
+  if (elevatorCache.data.length && Date.now() - elevatorCache.ts < ELEVATOR_TTL) {
+    return res.json(elevatorCache.data);
+  }
+  try {
+    const url = 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene_equipments.json';
+    const r = await fetch(url, { timeout: 8000 });
+    const data = await r.json();
+    const outages = (data || [])
+      .filter((e) => !e.isactive || e.isactive === 'N')
+      .map((e) => ({
+        station: e.station,
+        borough: e.borough,
+        type: e.equipmenttype === 'EL' ? 'elevator' : 'escalator',
+        serving: e.serving,
+        reason: e.reason || 'Out of service',
+        outageDate: e.outagedate,
+        estimatedReturn: e.estimatedreturntoservice,
+        routes: (e.trainno || '').split('/').filter(Boolean),
+      }))
+      .slice(0, 50);
+    elevatorCache = { data: outages, ts: Date.now() };
+    res.json(outages);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+// ── SSE: real-time event stream ──────────────────────────────
+const sseClients = new Set();
+
+app.get('/api/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('data: {"type":"connected"}\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
+function broadcastSSE(type, payload) {
+  const msg = `data: ${JSON.stringify({ type, ...payload })}\n\n`;
+  for (const client of sseClients) {
+    try { client.write(msg); } catch { sseClients.delete(client); }
+  }
+}
+
+// Periodically broadcast service status to SSE clients
+setInterval(async () => {
+  if (!sseClients.size) return;
+  try {
+    const status = serviceStatusCache.data;
+    if (status) broadcastSSE('service-status', { status });
+  } catch {}
+}, 30_000);
 
 // ── Stations list (for picker) ───────────────────────────────
 app.get('/api/stations', (_req, res) => {
@@ -819,12 +962,30 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 
-app.listen(config.port, '0.0.0.0', () => {
+const server = app.listen(config.port, '0.0.0.0', () => {
   console.log('');
   console.log('  NYC Transit Display');
   console.log(`  Port       : ${config.port}`);
   console.log(`  Subway key : ${config.apiKey ? 'set' : 'not set (public feeds)'}`);
   console.log(`  Bus key    : ${config.busApiKey ? 'set' : 'not set'}`);
   console.log(`  LocationIQ : ${config.locationIqToken ? 'set' : 'not set'}`);
+  console.log(`  Compression: enabled`);
+  console.log(`  SSE stream : /api/stream`);
   console.log('');
 });
+
+// ── Graceful shutdown ────────────────────────────────────────
+function shutdown(signal) {
+  console.log(`\n  ${signal} received — shutting down gracefully...`);
+  for (const client of sseClients) {
+    try { client.end(); } catch {}
+  }
+  sseClients.clear();
+  server.close(() => {
+    console.log('  Server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 5000);
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

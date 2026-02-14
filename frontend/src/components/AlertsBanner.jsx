@@ -26,16 +26,16 @@ export default function AlertsBanner({ routes, busRoutes }) {
   if (!relevant.length) return null;
 
   return (
-    <div className="border-b border-yellow-900/50 bg-yellow-950/30 px-4 py-1.5 space-y-1 shrink-0 max-h-28 overflow-y-auto">
+    <div className="border-b border-yellow-900/40 bg-gradient-to-r from-yellow-950/30 to-orange-950/20 px-4 py-1.5 space-y-1 shrink-0 max-h-32 overflow-y-auto">
       {relevant.map((a) => (
-        <div key={a.id} className="flex items-start gap-2 text-[11px]">
+        <div key={a.id} className="flex items-start gap-2 text-[11px] group">
           <div className="flex gap-0.5 shrink-0 pt-0.5">
-            {a.routes.filter((r) => allRoutes.has(r)).slice(0, 3).map((r) => {
+            {a.routes.filter((r) => allRoutes.has(r)).slice(0, 4).map((r) => {
               const li = SUBWAY_LINES[r];
               return (
                 <span
                   key={r}
-                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[8px] font-bold"
+                  className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[8px] font-bold shadow-sm"
                   style={{ backgroundColor: li?.color || '#0039A6', color: li?.text || '#fff' }}
                 >
                   {li?.name || r}
@@ -45,23 +45,29 @@ export default function AlertsBanner({ routes, busRoutes }) {
           </div>
           <button
             onClick={() => setExpanded(expanded === a.id ? null : a.id)}
-            className="flex-1 text-left text-yellow-200/80 hover:text-yellow-100 truncate"
+            className="flex-1 text-left text-yellow-200/80 hover:text-yellow-100 transition-colors truncate"
           >
             {a.header}
           </button>
           <button
             onClick={() => setDismissed((s) => new Set([...s, a.id]))}
-            className="text-gray-600 hover:text-gray-400 shrink-0"
+            className="text-gray-600 hover:text-gray-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
           >
             &times;
           </button>
         </div>
       ))}
-      {expanded && (
-        <p className="text-[10px] text-yellow-200/60 pl-6">
-          {alerts.find((a) => a.id === expanded)?.description}
-        </p>
-      )}
+      {expanded && (() => {
+        const alert = alerts.find((a) => a.id === expanded);
+        if (!alert) return null;
+        return (
+          <div className="bg-black/20 rounded-lg px-3 py-2 mt-1 border border-yellow-900/30">
+            <p className="text-[10px] text-yellow-200/60 leading-relaxed">
+              {alert.description}
+            </p>
+          </div>
+        );
+      })()}
     </div>
   );
 }

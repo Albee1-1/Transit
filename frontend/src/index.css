@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Base ──────────────────────────────────────────────────── */
 html,
 body,
 #root {
@@ -14,50 +15,78 @@ body {
   color: #fff;
   font-family: 'JetBrains Mono', monospace;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* kiosk: hide cursor after 3 s of inactivity */
 body.kiosk-idle {
   cursor: none;
 }
 
+/* Hide scrollbars everywhere */
 ::-webkit-scrollbar {
   display: none;
 }
-
-/* smooth row transitions */
-.arrival-row {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+* {
+  scrollbar-width: none;
 }
 
+/* ── Tabular numbers for countdowns ───────────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Arrival row transitions ──────────────────────────────── */
+.arrival-row {
+  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.2s ease;
+}
+
+/* ── NOW pulse animation ──────────────────────────────────── */
 @keyframes pulse-glow {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 .arriving {
-  animation: pulse-glow 1.4s ease-in-out infinite;
+  animation: pulse-glow 1.2s ease-in-out infinite;
 }
 
+/* ── Countdown NOW pulse ──────────────────────────────────── */
+@keyframes countdown-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.05); }
+}
+.countdown-pulse {
+  animation: countdown-pulse 1s ease-in-out infinite;
+}
+
+/* ── Fade-in for new items ────────────────────────────────── */
 @keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .fade-in {
   animation: fade-in 0.35s ease-out both;
 }
 
-/* User location blue pulsing dot on map */
+/* ── Slide-in from right ──────────────────────────────────── */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.slide-in-right {
+  animation: slide-in-right 0.3s ease-out both;
+}
+
+/* ── Clock colon blink ────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+.clock-colon {
+  animation: blink 1s step-end infinite;
+}
+
+/* ── User location blue pulsing dot on map ────────────────── */
 @keyframes user-loc-pulse {
   0% { transform: scale(1); opacity: 0.9; }
   50% { transform: scale(1.8); opacity: 0.3; }
@@ -67,7 +96,9 @@ body.kiosk-idle {
   animation: user-loc-pulse 2s ease-in-out infinite;
 }
 
-.train-icon-wrapper {
+/* ── Vehicle markers on map ───────────────────────────────── */
+.train-icon-wrapper,
+.citibike-icon-wrapper {
   background: transparent;
   border: 0;
 }
@@ -83,4 +114,44 @@ body.kiosk-idle {
   background: rgba(10, 10, 10, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.3s ease;
+}
+
+/* ── Skeleton loading shimmer ─────────────────────────────── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ── Fullscreen mode adjustments ──────────────────────────── */
+:fullscreen {
+  background: #0a0a0a;
+}
+
+/* ── Mobile responsive improvements ───────────────────────── */
+@media (max-width: 640px) {
+  .arrival-row {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+/* ── Safe area insets for notched devices ──────────────────── */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ── Leaflet tooltip overrides ────────────────────────────── */
+.leaflet-tooltip {
+  pointer-events: none;
 }
