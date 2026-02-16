@@ -1,0 +1,9 @@
+{
+  "name": "Matrix",
+  "description": "Falling code rain with optional clock overlay",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🟩",
+  "color": "#00ff41",
+  "hasBackend": false
+}

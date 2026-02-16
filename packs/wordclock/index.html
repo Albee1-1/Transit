@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word Clock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(11, 1fr);
+      gap: min(1.2vw, 1.2vh);
+      padding: 5vw;
+      max-width: 90vh;
+      width: 90vw;
+    }
+
+    .letter {
+      font-family: 'Inter', sans-serif;
+      font-size: min(4.5vw, 4.5vh);
+      font-weight: 300;
+      color: #1a1a1a;
+      text-align: center;
+      text-transform: uppercase;
+      transition: color 0.6s ease, text-shadow 0.6s ease;
+      line-height: 1;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .letter.active {
+      color: var(--active-color);
+      text-shadow: 0 0 20px var(--glow-color);
+      font-weight: 600;
+    }
+
+    .date-line {
+      font-family: 'Inter', sans-serif;
+      font-size: min(1.8vw, 1.8vh);
+      color: #2a2a2a;
+      text-transform: uppercase;
+      letter-spacing: 0.5em;
+      margin-top: 3vh;
+      font-weight: 300;
+    }
+
+    /* Corner dots for minutes past 5 */
+    .minute-dots {
+      display: flex;
+      gap: 12px;
+      margin-top: 2vh;
+    }
+    .minute-dot {
+      width: min(1vw, 1vh);
+      height: min(1vw, 1vh);
+      border-radius: 50%;
+      background: #1a1a1a;
+      transition: background 0.6s, box-shadow 0.6s;
+    }
+    .minute-dot.active {
+      background: var(--active-color);
+      box-shadow: 0 0 8px var(--glow-color);
+    }
+
+    :root {
+      --active-color: #ffffff;
+      --glow-color: rgba(255,255,255,0.3);
+    }
+    body.theme-warm {
+      --active-color: #ffb74d;
+      --glow-color: rgba(255,183,77,0.3);
+    }
+    body.theme-cool {
+      --active-color: #4fc3f7;
+      --glow-color: rgba(79,195,247,0.3);
+    }
+    body.theme-red {
+      --active-color: #ef5350;
+      --glow-color: rgba(239,83,80,0.3);
+    }
+    body.theme-green {
+      --active-color: #66bb6a;
+      --glow-color: rgba(102,187,106,0.3);
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #1a1a1a; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,10,10,0.95); border: 1px solid #222;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 200px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #111; color: #888; border: 1px solid #2a2a2a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #1a1a1a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div>
+      <h3>Color</h3>
+      <label>
+        <select id="colorSelect" onchange="saveSettings()">
+          <option value="white">White</option>
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="red">Red</option>
+          <option value="green">Green</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="minute-dots" id="minuteDots">
+    <div class="minute-dot" id="dot0"></div>
+    <div class="minute-dot" id="dot1"></div>
+    <div class="minute-dot" id="dot2"></div>
+    <div class="minute-dot" id="dot3"></div>
+  </div>
+  <div class="date-line" id="dateLine"></div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'wordclock';
+    let colorTheme = 'white';
+
+    // The letter grid (11x10) — based on QLOCKTWO layout
+    // Each row is 11 characters
+    const GRID = [
+      'ITLISASAMPM',
+      'ACQUARTERDC',
+      'TWENTYFIVEX',
+      'HALFBTENFTO',
+      'PASTERUNINE',
+      'ONESIXTHREE',
+      'FOURFIVETWO',
+      'EIGHTELEVEN',
+      'SEVENTWELVE',
+      'TENSEOCLOCK',
+    ];
+
+    // Word positions: [row, startCol, endCol] (inclusive)
+    const WORDS = {
+      IT:       [0, 0, 1],
+      IS:       [0, 3, 4],
+      A:        [0, 5, 5],   // used with "A QUARTER"
+      AM:       [0, 7, 8],
+      PM:       [0, 9, 10],
+      QUARTER:  [1, 2, 8],
+      TWENTY:   [2, 0, 5],
+      FIVE_M:   [2, 6, 9],   // FIVE (minutes)
+      HALF:     [3, 0, 3],
+      TEN_M:    [3, 5, 7],   // TEN (minutes)
+      TO:       [3, 9, 10],
+      PAST:     [4, 0, 3],
+      NINE:     [4, 7, 10],
+      ONE:      [5, 0, 2],
+      SIX:      [5, 3, 5],
+      THREE:    [5, 6, 10],
+      FOUR:     [6, 0, 3],
+      FIVE_H:   [6, 4, 7],   // FIVE (hour)
+      TWO:      [6, 8, 10],
+      EIGHT:    [7, 0, 4],
+      ELEVEN:   [7, 5, 10],
+      SEVEN:    [8, 0, 4],
+      TWELVE:   [8, 5, 10],
+      TEN_H:    [9, 0, 2],   // TEN (hour)
+      OCLOCK:   [9, 5, 10],
+    };
+
+    const HOUR_WORDS = [
+      'TWELVE', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE_H',
+      'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN_H', 'ELEVEN',
+    ];
+
+    // Build the grid DOM
+    const gridEl = document.getElementById('grid');
+    const letterEls = [];
+    for (let r = 0; r < GRID.length; r++) {
+      for (let c = 0; c < GRID[r].length; c++) {
+        const el = document.createElement('div');
+        el.className = 'letter';
+        el.textContent = GRID[r][c];
+        el.dataset.row = r;
+        el.dataset.col = c;
+        gridEl.appendChild(el);
+        letterEls.push(el);
+      }
+    }
+
+    function activateWord(name, activeSet) {
+      const w = WORDS[name];
+      if (!w) return;
+      for (let c = w[1]; c <= w[2]; c++) {
+        activeSet.add(`${w[0]}-${c}`);
+      }
+    }
+
+    function updateClock() {
+      const now = new Date();
+      let h = now.getHours();
+      const m = now.getMinutes();
+      const minuteRemainder = m % 5; // for dots
+      const fiveMin = Math.floor(m / 5);
+
+      const active = new Set();
+
+      // IT IS always on
+      activateWord('IT', active);
+      activateWord('IS', active);
+
+      // AM/PM
+      if (h < 12) activateWord('AM', active);
+      else activateWord('PM', active);
+
+      // Minutes
+      let hourForDisplay = h % 12;
+      let useTo = false;
+
+      switch (fiveMin) {
+        case 0:  activateWord('OCLOCK', active); break;
+        case 1:  activateWord('FIVE_M', active); activateWord('PAST', active); break;
+        case 2:  activateWord('TEN_M', active); activateWord('PAST', active); break;
+        case 3:  activateWord('A', active); activateWord('QUARTER', active); activateWord('PAST', active); break;
+        case 4:  activateWord('TWENTY', active); activateWord('PAST', active); break;
+        case 5:  activateWord('TWENTY', active); activateWord('FIVE_M', active); activateWord('PAST', active); break;
+        case 6:  activateWord('HALF', active); activateWord('PAST', active); break;
+        case 7:  activateWord('TWENTY', active); activateWord('FIVE_M', active); activateWord('TO', active); useTo = true; break;
+        case 8:  activateWord('TWENTY', active); activateWord('TO', active); useTo = true; break;
+        case 9:  activateWord('A', active); activateWord('QUARTER', active); activateWord('TO', active); useTo = true; break;
+        case 10: activateWord('TEN_M', active); activateWord('TO', active); useTo = true; break;
+        case 11: activateWord('FIVE_M', active); activateWord('TO', active); useTo = true; break;
+      }
+
+      // If "TO", advance hour
+      if (useTo) hourForDisplay = (hourForDisplay + 1) % 12;
+
+      // Hour word
+      activateWord(HOUR_WORDS[hourForDisplay], active);
+
+      // Apply to DOM
+      for (const el of letterEls) {
+        const key = `${el.dataset.row}-${el.dataset.col}`;
+        el.classList.toggle('active', active.has(key));
+      }
+
+      // Minute dots (0-4 extra minutes past the 5-min mark)
+      for (let i = 0; i < 4; i++) {
+        document.getElementById('dot' + i).classList.toggle('active', i < minuteRemainder);
+      }
+
+      // Date
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('dateLine').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    function applyColor() {
+      document.body.className = colorTheme === 'white' ? '' : 'theme-' + colorTheme;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorTheme) colorTheme = cfg.colorTheme;
+        document.getElementById('colorSelect').value = colorTheme;
+      } catch {}
+      applyColor();
+      updateClock();
+    }
+    async function saveSettings() {
+      colorTheme = document.getElementById('colorSelect').value;
+      applyColor();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ colorTheme }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 5000);
+    connectSSE();
+  </script>
+</body>
+</html>

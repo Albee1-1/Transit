@@ -1,0 +1,9 @@
+{
+  "name": "Weather",
+  "description": "Full-screen weather display with animated conditions",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌤",
+  "color": "#42a5f5",
+  "hasBackend": false
+}

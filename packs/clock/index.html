@@ -4,113 +4,356 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Clock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600&family=JetBrains+Mono:wght@200;300;400&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: #0a0a0a;
+      background: #050505;
       color: #e0e0e0;
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       height: 100vh;
       overflow: hidden;
       user-select: none;
       -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
+    /* ── Animated gradient background ── */
+    .bg-gradient {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      opacity: 0.4;
+      background: radial-gradient(ellipse at 20% 50%, var(--accent-dim) 0%, transparent 60%),
+                  radial-gradient(ellipse at 80% 50%, var(--accent-dim2) 0%, transparent 60%);
+      animation: bgShift 20s ease-in-out infinite alternate;
+    }
+    @keyframes bgShift {
+      0%   { transform: scale(1) rotate(0deg); opacity: 0.3; }
+      50%  { transform: scale(1.1) rotate(1deg); opacity: 0.5; }
+      100% { transform: scale(1) rotate(-1deg); opacity: 0.3; }
+    }
+
+    /* ── Digital Mode ── */
     .clock-container {
+      position: relative;
+      z-index: 1;
       text-align: center;
+      transition: opacity 0.5s;
     }
 
-    .time {
+    .time-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.02em;
+    }
+
+    .time-digit {
+      font-family: 'Inter', sans-serif;
+      font-size: 22vw;
+      font-weight: 100;
+      line-height: 0.9;
+      color: #fff;
+      letter-spacing: -0.02em;
+      transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .time-colon {
+      font-family: 'Inter', sans-serif;
       font-size: 18vw;
+      font-weight: 100;
+      color: #444;
+      animation: colonPulse 2s ease-in-out infinite;
+      line-height: 0.9;
+      margin: 0 -0.01em;
+    }
+    @keyframes colonPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+
+    .seconds-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 6vw;
       font-weight: 200;
-      letter-spacing: 0.02em;
-      line-height: 1;
-      color: #ffffff;
-    }
-
-    .time .seconds {
-      font-size: 8vw;
-      color: #555;
+      color: #333;
+      margin-left: 0.3em;
       vertical-align: super;
-      margin-left: 0.1em;
-      transition: opacity 0.3s;
+      transition: opacity 0.4s, transform 0.4s;
+      display: inline-block;
+    }
+    .seconds-display.hidden { opacity: 0; transform: translateY(10px); }
+
+    .ampm {
+      font-family: 'Inter', sans-serif;
+      font-size: 3vw;
+      font-weight: 300;
+      color: #444;
+      margin-left: 0.5em;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
     }
 
-    .time .seconds.hidden { opacity: 0; }
-
-    .date {
-      font-size: 3.5vw;
-      color: #888;
-      margin-top: 1.5vh;
-      font-weight: 300;
+    .date-line {
+      font-family: 'Inter', sans-serif;
+      font-size: 2.8vw;
+      color: #555;
+      margin-top: 2vh;
+      font-weight: 200;
+      letter-spacing: 0.05em;
     }
 
     .divider {
-      width: 30vw;
+      width: 20vw;
       height: 1px;
-      background: linear-gradient(90deg, transparent, #333, transparent);
       margin: 3vh auto;
+      background: linear-gradient(90deg, transparent, var(--accent-line), transparent);
+      opacity: 0.5;
     }
 
-    .day-of-week {
-      font-size: 2.5vw;
-      color: #666;
+    .day-line {
+      font-family: 'Inter', sans-serif;
+      font-size: 2vw;
+      color: #3a3a3a;
       text-transform: uppercase;
-      letter-spacing: 0.5em;
+      letter-spacing: 0.6em;
+      font-weight: 300;
     }
 
-    /* Settings gear */
+    /* ── Analog Mode ── */
+    .analog-container {
+      position: relative;
+      z-index: 1;
+      display: none;
+    }
+
+    .analog-face {
+      width: min(70vh, 70vw);
+      height: min(70vh, 70vw);
+      position: relative;
+    }
+
+    .analog-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid #1a1a1a;
+    }
+
+    .analog-ring-inner {
+      position: absolute;
+      inset: 5%;
+      border-radius: 50%;
+      border: 1px solid #111;
+    }
+
+    /* Tick marks */
+    .tick {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 1px;
+      height: 100%;
+      transform-origin: center center;
+    }
+    .tick::before {
+      content: '';
+      display: block;
+      width: 1px;
+      background: #2a2a2a;
+      margin: 0 auto;
+    }
+    .tick.major::before {
+      height: 4%;
+      width: 2px;
+      background: #555;
+    }
+    .tick.minor::before {
+      height: 2%;
+      background: #1a1a1a;
+    }
+
+    /* Hour numbers */
+    .hour-number {
+      position: absolute;
+      font-family: 'Inter', sans-serif;
+      font-size: min(4vh, 4vw);
+      font-weight: 200;
+      color: #444;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Hands */
+    .hand {
+      position: absolute;
+      bottom: 50%;
+      left: 50%;
+      transform-origin: bottom center;
+      border-radius: 2px;
+    }
+    .hand-hour {
+      width: 3px;
+      height: 25%;
+      background: linear-gradient(to top, #888, #fff);
+      margin-left: -1.5px;
+    }
+    .hand-minute {
+      width: 2px;
+      height: 35%;
+      background: linear-gradient(to top, #666, #ccc);
+      margin-left: -1px;
+    }
+    .hand-second {
+      width: 1px;
+      height: 40%;
+      background: var(--accent-line);
+      margin-left: -0.5px;
+      transition: none;
+    }
+    .hand-second.hidden { opacity: 0; }
+
+    .center-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px rgba(255,255,255,0.3);
+    }
+
+    .analog-date {
+      position: absolute;
+      bottom: -8vh;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+    }
+    .analog-date .date-line { margin-top: 0; }
+
+    /* ── Settings ── */
     .settings-btn {
       position: fixed;
-      top: 12px;
-      right: 12px;
-      width: 32px;
-      height: 32px;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
       background: none;
       border: none;
-      color: #333;
-      font-size: 20px;
+      color: #222;
+      font-size: 22px;
       cursor: pointer;
       opacity: 0;
       transition: opacity 0.3s;
-      z-index: 10;
+      z-index: 100;
     }
-    body:hover .settings-btn,
-    body:active .settings-btn { opacity: 1; }
+    body:hover .settings-btn { opacity: 1; }
 
     .settings-panel {
       position: fixed;
-      top: 50px;
-      right: 12px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 16px;
+      top: 60px;
+      right: 16px;
+      background: rgba(15, 15, 15, 0.95);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px;
       display: none;
-      z-index: 10;
-      min-width: 200px;
+      z-index: 100;
+      min-width: 220px;
+      backdrop-filter: blur(20px);
     }
     .settings-panel.open { display: block; }
+
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
 
     .settings-panel label {
       display: flex;
       align-items: center;
-      gap: 8px;
-      color: #aaa;
-      font-size: 14px;
+      gap: 10px;
+      color: #999;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
       cursor: pointer;
-      padding: 4px 0;
+      padding: 6px 0;
     }
 
     .settings-panel input[type="checkbox"] {
-      accent-color: #4fc3f7;
+      accent-color: var(--accent-line);
+      width: 16px;
+      height: 16px;
     }
 
-    /* SSE reload listener */
+    .settings-panel select {
+      background: #111;
+      color: #999;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .setting-group {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    /* ── Color themes ── */
+    :root {
+      --accent-dim: rgba(79, 195, 247, 0.08);
+      --accent-dim2: rgba(129, 199, 132, 0.06);
+      --accent-line: #4fc3f7;
+    }
+    body.theme-blue {
+      --accent-dim: rgba(79, 195, 247, 0.08);
+      --accent-dim2: rgba(100, 180, 255, 0.06);
+      --accent-line: #4fc3f7;
+    }
+    body.theme-red {
+      --accent-dim: rgba(244, 67, 54, 0.08);
+      --accent-dim2: rgba(255, 100, 80, 0.06);
+      --accent-line: #f44336;
+    }
+    body.theme-green {
+      --accent-dim: rgba(76, 175, 80, 0.08);
+      --accent-dim2: rgba(129, 199, 132, 0.06);
+      --accent-line: #66bb6a;
+    }
+    body.theme-amber {
+      --accent-dim: rgba(255, 183, 77, 0.08);
+      --accent-dim2: rgba(255, 213, 79, 0.06);
+      --accent-line: #ffb74d;
+    }
+    body.theme-purple {
+      --accent-dim: rgba(186, 104, 200, 0.08);
+      --accent-dim2: rgba(149, 117, 205, 0.06);
+      --accent-line: #ba68c8;
+    }
+    body.theme-white {
+      --accent-dim: rgba(255, 255, 255, 0.04);
+      --accent-dim2: rgba(200, 200, 200, 0.03);
+      --accent-line: #888;
+    }
+
     .reload-indicator {
       position: fixed;
       bottom: 8px;
@@ -118,60 +361,209 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #2a2a2a;
+      background: #1a1a1a;
+      z-index: 10;
     }
     .reload-indicator.connected { background: #4caf50; }
   </style>
 </head>
-<body>
+<body class="theme-blue">
+  <div class="bg-gradient"></div>
+
   <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
   <div class="settings-panel" id="settingsPanel">
-    <label>
-      <input type="checkbox" id="showSeconds" checked onchange="saveSettings()" />
-      Show seconds
-    </label>
-    <label>
-      <input type="checkbox" id="use24h" onchange="saveSettings()" />
-      24-hour format
-    </label>
+    <div class="setting-group">
+      <h3>Mode</h3>
+      <label>
+        <select id="modeSelect" onchange="saveSettings()">
+          <option value="digital">Digital</option>
+          <option value="analog">Analog</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showSeconds" checked onchange="saveSettings()" /> Show seconds</label>
+      <label><input type="checkbox" id="use24h" onchange="saveSettings()" /> 24-hour format</label>
+    </div>
+    <div class="setting-group">
+      <h3>Accent Color</h3>
+      <label>
+        <select id="colorSelect" onchange="saveSettings()">
+          <option value="blue">Blue</option>
+          <option value="red">Red</option>
+          <option value="green">Green</option>
+          <option value="amber">Amber</option>
+          <option value="purple">Purple</option>
+          <option value="white">White</option>
+        </select>
+      </label>
+    </div>
   </div>
 
-  <div class="clock-container">
-    <div class="time" id="time">
-      <span id="hhmm">00:00</span><span class="seconds" id="ss">00</span>
+  <!-- Digital clock -->
+  <div class="clock-container" id="digitalClock">
+    <div class="time-row">
+      <span class="time-digit" id="d0">0</span><span class="time-digit" id="d1">0</span><span class="time-colon">:</span><span class="time-digit" id="d2">0</span><span class="time-digit" id="d3">0</span><span class="seconds-display" id="ss">00</span><span class="ampm" id="ampm"></span>
     </div>
-    <div class="date" id="date"></div>
+    <div class="date-line" id="dateLine"></div>
     <div class="divider"></div>
-    <div class="day-of-week" id="dow"></div>
+    <div class="day-line" id="dayLine"></div>
+  </div>
+
+  <!-- Analog clock -->
+  <div class="analog-container" id="analogClock">
+    <div class="analog-face" id="analogFace">
+      <div class="analog-ring"></div>
+      <div class="analog-ring-inner"></div>
+      <div class="hand hand-hour" id="handHour"></div>
+      <div class="hand hand-minute" id="handMinute"></div>
+      <div class="hand hand-second" id="handSecond"></div>
+      <div class="center-dot"></div>
+    </div>
+    <div class="analog-date">
+      <div class="date-line" id="analogDateLine"></div>
+      <div class="divider"></div>
+      <div class="day-line" id="analogDayLine"></div>
+    </div>
   </div>
 
   <div class="reload-indicator" id="sseIndicator"></div>
 
   <script>
     const PACK_ID = 'clock';
+    let mode = 'digital';
     let showSeconds = true;
     let use24h = false;
+    let accentColor = 'blue';
+    let prevDigits = ['', '', '', ''];
 
-    // Load settings from shell config API
+    // Build analog face
+    function buildAnalogFace() {
+      const face = document.getElementById('analogFace');
+      // Ticks
+      for (let i = 0; i < 60; i++) {
+        const tick = document.createElement('div');
+        tick.className = 'tick ' + (i % 5 === 0 ? 'major' : 'minor');
+        tick.style.transform = `rotate(${i * 6}deg)`;
+        face.appendChild(tick);
+      }
+      // Hour numbers
+      for (let h = 1; h <= 12; h++) {
+        const num = document.createElement('div');
+        num.className = 'hour-number';
+        const angle = (h * 30 - 90) * Math.PI / 180;
+        const radius = 42;
+        num.style.left = `${50 + radius * Math.cos(angle)}%`;
+        num.style.top = `${50 + radius * Math.sin(angle)}%`;
+        num.textContent = h;
+        face.appendChild(num);
+      }
+    }
+    buildAnalogFace();
+
+    function updateClock() {
+      const now = new Date();
+      let h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+      const ms = now.getMilliseconds();
+
+      // AM/PM
+      const ampmEl = document.getElementById('ampm');
+      if (!use24h) {
+        ampmEl.textContent = h >= 12 ? 'PM' : 'AM';
+        ampmEl.style.display = '';
+        h = h % 12 || 12;
+      } else {
+        ampmEl.style.display = 'none';
+      }
+
+      const hStr = String(h).padStart(2, '0');
+      const mStr = String(m).padStart(2, '0');
+      const sStr = String(s).padStart(2, '0');
+      const digits = [hStr[0], hStr[1], mStr[0], mStr[1]];
+
+      // Digital mode
+      for (let i = 0; i < 4; i++) {
+        const el = document.getElementById('d' + i);
+        if (digits[i] !== prevDigits[i]) {
+          el.style.transform = 'translateY(-8px)';
+          el.style.opacity = '0';
+          setTimeout(() => {
+            el.textContent = digits[i];
+            el.style.transform = 'translateY(0)';
+            el.style.opacity = '1';
+          }, 150);
+        }
+      }
+      prevDigits = digits;
+
+      const ssEl = document.getElementById('ss');
+      ssEl.textContent = sStr;
+      ssEl.className = showSeconds ? 'seconds-display' : 'seconds-display hidden';
+
+      // Date
+      const dateOpts = { year: 'numeric', month: 'long', day: 'numeric' };
+      const dateStr = now.toLocaleDateString('en-US', dateOpts);
+      const dayStr = now.toLocaleDateString('en-US', { weekday: 'long' });
+      document.getElementById('dateLine').textContent = dateStr;
+      document.getElementById('dayLine').textContent = dayStr;
+      document.getElementById('analogDateLine').textContent = dateStr;
+      document.getElementById('analogDayLine').textContent = dayStr;
+
+      // Analog hands (smooth sweep)
+      const rawH = now.getHours();
+      const hourDeg = ((rawH % 12) + m / 60 + s / 3600) * 30;
+      const minDeg = (m + s / 60) * 6;
+      const secDeg = (s + ms / 1000) * 6;
+
+      document.getElementById('handHour').style.transform = `translateX(-50%) rotate(${hourDeg}deg)`;
+      document.getElementById('handMinute').style.transform = `translateX(-50%) rotate(${minDeg}deg)`;
+      const secHand = document.getElementById('handSecond');
+      secHand.style.transform = `translateX(-50%) rotate(${secDeg}deg)`;
+      secHand.className = showSeconds ? 'hand hand-second' : 'hand hand-second hidden';
+    }
+
+    function applyMode() {
+      document.getElementById('digitalClock').style.display = mode === 'digital' ? '' : 'none';
+      document.getElementById('analogClock').style.display = mode === 'analog' ? '' : 'none';
+    }
+
+    function applyColor() {
+      document.body.className = 'theme-' + accentColor;
+    }
+
+    // Settings
     async function loadSettings() {
       try {
-        const res = await fetch(`/api/config/${PACK_ID}`);
+        const res = await fetch('/api/config/' + PACK_ID);
         const cfg = await res.json();
+        if (cfg.mode) mode = cfg.mode;
         if (cfg.showSeconds !== undefined) showSeconds = cfg.showSeconds;
         if (cfg.use24h !== undefined) use24h = cfg.use24h;
+        if (cfg.accentColor) accentColor = cfg.accentColor;
+        document.getElementById('modeSelect').value = mode;
         document.getElementById('showSeconds').checked = showSeconds;
         document.getElementById('use24h').checked = use24h;
+        document.getElementById('colorSelect').value = accentColor;
       } catch {}
+      applyMode();
+      applyColor();
     }
 
     async function saveSettings() {
+      mode = document.getElementById('modeSelect').value;
       showSeconds = document.getElementById('showSeconds').checked;
       use24h = document.getElementById('use24h').checked;
+      accentColor = document.getElementById('colorSelect').value;
+      applyMode();
+      applyColor();
       try {
-        await fetch(`/api/config/${PACK_ID}`, {
+        await fetch('/api/config/' + PACK_ID, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ showSeconds, use24h }),
+          body: JSON.stringify({ mode, showSeconds, use24h, accentColor }),
         });
       } catch {}
     }
@@ -179,59 +571,31 @@
     function toggleSettings() {
       document.getElementById('settingsPanel').classList.toggle('open');
     }
-
-    // Close settings when clicking outside
     document.addEventListener('click', (e) => {
-      const panel = document.getElementById('settingsPanel');
-      const btn = document.querySelector('.settings-btn');
-      if (!panel.contains(e.target) && e.target !== btn) {
-        panel.classList.remove('open');
-      }
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
     });
 
-    function updateClock() {
-      const now = new Date();
-
-      let h = now.getHours();
-      const m = String(now.getMinutes()).padStart(2, '0');
-      const s = String(now.getSeconds()).padStart(2, '0');
-
-      if (!use24h) {
-        h = h % 12 || 12;
-      }
-      const hStr = String(h).padStart(2, '0');
-
-      document.getElementById('hhmm').textContent = `${hStr}:${m}`;
-      const ssEl = document.getElementById('ss');
-      ssEl.textContent = s;
-      ssEl.className = showSeconds ? 'seconds' : 'seconds hidden';
-
-      const opts = { year: 'numeric', month: 'long', day: 'numeric' };
-      document.getElementById('date').textContent = now.toLocaleDateString('en-US', opts);
-      document.getElementById('dow').textContent = now.toLocaleDateString('en-US', { weekday: 'long' });
-    }
-
-    // SSE: listen for pack changes → reload
+    // SSE
     function connectSSE() {
-      const indicator = document.getElementById('sseIndicator');
+      const ind = document.getElementById('sseIndicator');
       const es = new EventSource('/api/events');
-      es.onopen = () => indicator.classList.add('connected');
+      es.onopen = () => ind.classList.add('connected');
       es.addEventListener('packChanged', (e) => {
-        const data = JSON.parse(e.data);
-        if (data.activePackId !== PACK_ID) {
-          window.location.href = '/';
-        }
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
       });
-      es.onerror = () => {
-        indicator.classList.remove('connected');
-        es.close();
-        setTimeout(connectSSE, 5000);
-      };
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
     }
 
     loadSettings();
     updateClock();
-    setInterval(updateClock, 1000);
+    // Use requestAnimationFrame for smooth analog seconds
+    function tick() {
+      updateClock();
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
     connectSSE();
   </script>
 </body>

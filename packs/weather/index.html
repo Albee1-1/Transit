@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #080810;
+      color: #e0e0e0;
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .weather-container {
+      text-align: center;
+      padding: 5vw;
+      max-width: 900px;
+      width: 100%;
+    }
+
+    /* Animated weather icon */
+    .weather-icon {
+      font-size: 15vw;
+      line-height: 1;
+      margin-bottom: 2vh;
+      animation: iconFloat 4s ease-in-out infinite;
+    }
+    @keyframes iconFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .temp-current {
+      font-size: 18vw;
+      font-weight: 100;
+      color: #fff;
+      line-height: 0.9;
+      letter-spacing: -0.02em;
+    }
+    .temp-current .unit {
+      font-size: 5vw;
+      color: #555;
+      vertical-align: super;
+      margin-left: 0.1em;
+    }
+
+    .condition {
+      font-size: 3vw;
+      font-weight: 200;
+      color: #666;
+      margin-top: 1vh;
+      text-transform: capitalize;
+    }
+
+    .location {
+      font-size: 1.8vw;
+      font-weight: 300;
+      color: #3a3a3a;
+      margin-top: 1vh;
+      letter-spacing: 0.1em;
+    }
+
+    .divider {
+      width: 15vw;
+      height: 1px;
+      margin: 4vh auto;
+      background: linear-gradient(90deg, transparent, #2a2a2a, transparent);
+    }
+
+    .details-row {
+      display: flex;
+      justify-content: center;
+      gap: 5vw;
+      margin-top: 2vh;
+    }
+
+    .detail-item {
+      text-align: center;
+    }
+    .detail-item .value {
+      font-size: 4vw;
+      font-weight: 200;
+      color: #ccc;
+    }
+    .detail-item .label {
+      font-size: 1.2vw;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-top: 0.5vh;
+      font-weight: 300;
+    }
+
+    .forecast-row {
+      display: flex;
+      justify-content: center;
+      gap: 3vw;
+      margin-top: 3vh;
+    }
+    .forecast-day {
+      text-align: center;
+      padding: 1.5vh 1.5vw;
+      background: rgba(255,255,255,0.02);
+      border-radius: 12px;
+      border: 1px solid #151515;
+      min-width: 80px;
+    }
+    .forecast-day .day-name {
+      font-size: 1.2vw;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 400;
+    }
+    .forecast-day .day-icon { font-size: 3vw; margin: 1vh 0; }
+    .forecast-day .day-temps {
+      font-size: 1.4vw;
+      color: #888;
+      font-weight: 200;
+    }
+    .forecast-day .day-temps .hi { color: #ccc; }
+
+    .last-updated {
+      position: fixed;
+      bottom: 20px;
+      right: 30px;
+      font-size: 11px;
+      color: #222;
+      font-weight: 300;
+    }
+
+    .clock-corner {
+      position: fixed;
+      top: 30px;
+      right: 40px;
+      text-align: right;
+      pointer-events: none;
+    }
+    .clock-corner .time {
+      font-size: 28px;
+      font-weight: 100;
+      color: rgba(255,255,255,0.1);
+    }
+    .clock-corner .date {
+      font-size: 12px;
+      font-weight: 200;
+      color: rgba(255,255,255,0.05);
+      letter-spacing: 0.08em;
+    }
+
+    .error-msg {
+      color: #333;
+      font-size: 2vw;
+      font-weight: 200;
+    }
+    .error-msg .hint {
+      font-size: 1.2vw;
+      color: #222;
+      margin-top: 1vh;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #1a1a1a; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,10,15,0.95); border: 1px solid #222;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 260px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-size: 13px; cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel input[type="text"] {
+      background: #111; color: #aaa; border: 1px solid #2a2a2a;
+      border-radius: 6px; padding: 8px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel select {
+      background: #111; color: #888; border: 1px solid #2a2a2a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel button.save-btn {
+      background: #1a3a5a; color: #8ac; border: none;
+      border-radius: 6px; padding: 8px 16px; font-size: 13px;
+      cursor: pointer; width: 100%; margin-top: 12px;
+      font-family: 'Inter', sans-serif;
+    }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #151515; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #0a0a0a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Location</h3>
+      <label>City or Coordinates</label>
+      <input type="text" id="locationInput" placeholder="e.g. New York or 40.7,-74.0" />
+    </div>
+    <div class="setting-group">
+      <h3>Units</h3>
+      <label>
+        <select id="unitSelect">
+          <option value="fahrenheit">Fahrenheit</option>
+          <option value="celsius">Celsius</option>
+        </select>
+      </label>
+    </div>
+    <button class="save-btn" onclick="saveSettings()">Save & Refresh</button>
+  </div>
+
+  <div class="clock-corner">
+    <div class="time" id="cornerTime"></div>
+    <div class="date" id="cornerDate"></div>
+  </div>
+
+  <div class="weather-container" id="weatherContainer">
+    <div class="error-msg">
+      <div>Loading weather...</div>
+      <div class="hint">Set your location in settings (gear icon)</div>
+    </div>
+  </div>
+
+  <div class="last-updated" id="lastUpdated"></div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'weather';
+    let location_str = '';
+    let units = 'fahrenheit';
+    let weatherData = null;
+
+    // Weather condition → emoji
+    function weatherIcon(code) {
+      if (code <= 1) return '☀️';
+      if (code <= 3) return '⛅';
+      if (code <= 48) return '☁️';
+      if (code <= 55) return '🌧️';
+      if (code <= 57) return '🌧️';
+      if (code <= 65) return '🌧️';
+      if (code <= 67) return '🌧️';
+      if (code <= 75) return '❄️';
+      if (code <= 77) return '❄️';
+      if (code <= 82) return '🌧️';
+      if (code <= 86) return '❄️';
+      if (code <= 95) return '⛈️';
+      return '⛈️';
+    }
+    function weatherDesc(code) {
+      if (code === 0) return 'Clear sky';
+      if (code <= 3) return 'Partly cloudy';
+      if (code <= 48) return 'Foggy';
+      if (code <= 55) return 'Drizzle';
+      if (code <= 57) return 'Freezing drizzle';
+      if (code <= 65) return 'Rain';
+      if (code <= 67) return 'Freezing rain';
+      if (code <= 75) return 'Snowfall';
+      if (code <= 77) return 'Snow grains';
+      if (code <= 82) return 'Rain showers';
+      if (code <= 86) return 'Snow showers';
+      if (code <= 95) return 'Thunderstorm';
+      return 'Thunderstorm';
+    }
+
+    function dayName(dateStr) {
+      const d = new Date(dateStr + 'T12:00:00');
+      return d.toLocaleDateString('en-US', { weekday: 'short' });
+    }
+
+    function tempVal(c) {
+      if (units === 'fahrenheit') return Math.round(c * 9/5 + 32);
+      return Math.round(c);
+    }
+    function tempUnit() { return units === 'fahrenheit' ? 'F' : 'C'; }
+
+    async function fetchWeather() {
+      if (!location_str) return;
+      try {
+        // Geocode
+        let lat, lon, displayName;
+        const coords = location_str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+        if (coords) {
+          lat = coords[1]; lon = coords[2];
+          displayName = `${lat}, ${lon}`;
+        } else {
+          const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location_str)}&count=1`);
+          const geoData = await geoRes.json();
+          if (!geoData.results?.length) {
+            showError('Location not found');
+            return;
+          }
+          lat = geoData.results[0].latitude;
+          lon = geoData.results[0].longitude;
+          displayName = geoData.results[0].name + (geoData.results[0].admin1 ? ', ' + geoData.results[0].admin1 : '');
+        }
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode,windspeed_10m,relativehumidity_2m,apparent_temperature&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5`;
+        const res = await fetch(url);
+        const data = await res.json();
+        weatherData = { ...data, displayName };
+        renderWeather();
+        document.getElementById('lastUpdated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (e) {
+        showError('Failed to fetch weather');
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('weatherContainer').innerHTML = `
+        <div class="error-msg">
+          <div>${msg}</div>
+          <div class="hint">Check settings (gear icon)</div>
+        </div>`;
+    }
+
+    function renderWeather() {
+      if (!weatherData) return;
+      const c = weatherData.current;
+      const d = weatherData.daily;
+      const icon = weatherIcon(c.weathercode);
+      const desc = weatherDesc(c.weathercode);
+      const temp = tempVal(c.temperature_2m);
+      const feelsLike = tempVal(c.apparent_temperature);
+      const u = tempUnit();
+
+      let forecastHtml = '';
+      for (let i = 1; i < Math.min(d.time.length, 5); i++) {
+        forecastHtml += `
+          <div class="forecast-day">
+            <div class="day-name">${dayName(d.time[i])}</div>
+            <div class="day-icon">${weatherIcon(d.weathercode[i])}</div>
+            <div class="day-temps"><span class="hi">${tempVal(d.temperature_2m_max[i])}</span> / ${tempVal(d.temperature_2m_min[i])}</div>
+          </div>`;
+      }
+
+      document.getElementById('weatherContainer').innerHTML = `
+        <div class="weather-icon">${icon}</div>
+        <div class="temp-current">${temp}<span class="unit">&deg;${u}</span></div>
+        <div class="condition">${desc}</div>
+        <div class="location">${weatherData.displayName}</div>
+        <div class="divider"></div>
+        <div class="details-row">
+          <div class="detail-item">
+            <div class="value">${feelsLike}&deg;</div>
+            <div class="label">Feels like</div>
+          </div>
+          <div class="detail-item">
+            <div class="value">${c.relativehumidity_2m}%</div>
+            <div class="label">Humidity</div>
+          </div>
+          <div class="detail-item">
+            <div class="value">${Math.round(c.windspeed_10m)} mph</div>
+            <div class="label">Wind</div>
+          </div>
+        </div>
+        <div class="forecast-row">${forecastHtml}</div>
+      `;
+    }
+
+    // Corner clock
+    function updateCornerClock() {
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('cornerTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      document.getElementById('cornerDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.location) location_str = cfg.location;
+        if (cfg.units) units = cfg.units;
+        document.getElementById('locationInput').value = location_str;
+        document.getElementById('unitSelect').value = units;
+      } catch {}
+      fetchWeather();
+      updateCornerClock();
+    }
+    async function saveSettings() {
+      location_str = document.getElementById('locationInput').value.trim();
+      units = document.getElementById('unitSelect').value;
+      document.getElementById('settingsPanel').classList.remove('open');
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location: location_str, units }),
+        });
+      } catch {}
+      fetchWeather();
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateCornerClock, 30000);
+    setInterval(fetchWeather, 600000); // refresh every 10 min
+    connectSSE();
+  </script>
+</body>
+</html>

@@ -4,122 +4,78 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ambient</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body {
-      background: #050510;
+      background: #020206;
       overflow: hidden;
       height: 100vh;
       user-select: none;
       -webkit-user-select: none;
     }
+    canvas { display: block; width: 100vw; height: 100vh; }
 
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-    }
-
-    /* Weather overlay (placeholder) */
-    .weather-overlay {
-      position: fixed;
-      bottom: 30px;
-      right: 40px;
-      color: rgba(255, 255, 255, 0.25);
-      font-family: 'SF Mono', 'Consolas', monospace;
-      font-size: 14px;
-      text-align: right;
-      pointer-events: none;
-      transition: opacity 0.5s;
-    }
-    .weather-overlay.hidden { opacity: 0; }
-
-    .weather-overlay .temp {
-      font-size: 48px;
-      font-weight: 200;
-      line-height: 1;
-    }
-    .weather-overlay .desc {
-      margin-top: 4px;
-      font-size: 16px;
-    }
-
-    /* Tiny clock in corner */
     .corner-clock {
       position: fixed;
       bottom: 30px;
       left: 40px;
-      color: rgba(255, 255, 255, 0.15);
-      font-family: 'SF Mono', 'Consolas', monospace;
-      font-size: 24px;
-      font-weight: 200;
+      font-family: 'Inter', sans-serif;
+      font-weight: 100;
       pointer-events: none;
+      transition: opacity 0.5s;
     }
+    .corner-clock .clock-time {
+      font-size: 36px;
+      color: rgba(255,255,255,0.12);
+      letter-spacing: 0.05em;
+    }
+    .corner-clock .clock-date {
+      font-size: 14px;
+      color: rgba(255,255,255,0.06);
+      margin-top: 2px;
+      letter-spacing: 0.08em;
+    }
+    .corner-clock.hidden { opacity: 0; }
 
-    /* Settings */
     .settings-btn {
-      position: fixed;
-      top: 12px;
-      right: 12px;
-      width: 32px;
-      height: 32px;
-      background: none;
-      border: none;
-      color: #222;
-      font-size: 20px;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.3s;
-      z-index: 10;
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #1a1a1a; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
     }
     body:hover .settings-btn { opacity: 1; }
 
     .settings-panel {
-      position: fixed;
-      top: 50px;
-      right: 12px;
-      background: rgba(20, 20, 30, 0.95);
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 16px;
-      display: none;
-      z-index: 10;
-      min-width: 220px;
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,10,15,0.95); border: 1px solid #222;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 240px; backdrop-filter: blur(20px);
     }
     .settings-panel.open { display: block; }
-
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
     .settings-panel label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: #aaa;
-      font-size: 14px;
-      cursor: pointer;
-      padding: 4px 0;
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
     }
-
-    .settings-panel select, .settings-panel input[type="checkbox"] {
-      accent-color: #81c784;
-    }
-
     .settings-panel select {
-      background: #1a1a2a;
-      color: #ccc;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-size: 13px;
+      background: #111; color: #888; border: 1px solid #2a2a2a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
     }
+    .settings-panel input[type="checkbox"] { accent-color: #4fc3f7; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #151515; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 
     .reload-indicator {
-      position: fixed;
-      bottom: 8px;
-      left: 8px;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #1a1a2a;
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #0a0a0a; z-index: 10;
     }
     .reload-indicator.connected { background: #4caf50; }
   </style>
@@ -127,172 +83,428 @@
 <body>
   <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
   <div class="settings-panel" id="settingsPanel">
-    <label>
-      Theme
-      <select id="themeSelect" onchange="saveSettings()">
-        <option value="aurora">Aurora</option>
-        <option value="ocean">Ocean Waves</option>
-        <option value="gradient">Gradient Drift</option>
-      </select>
-    </label>
-    <label>
-      <input type="checkbox" id="showWeather" onchange="saveSettings()" />
-      Show weather (placeholder)
-    </label>
-    <label>
-      <input type="checkbox" id="showClock" checked onchange="saveSettings()" />
-      Show corner clock
-    </label>
+    <div class="setting-group">
+      <h3>Theme</h3>
+      <label>
+        <select id="themeSelect" onchange="saveSettings()">
+          <option value="aurora">Aurora Borealis</option>
+          <option value="stars">Starfield</option>
+          <option value="rain">Night Rain</option>
+          <option value="fireflies">Fireflies</option>
+          <option value="ocean">Deep Ocean</option>
+          <option value="lava">Lava Flow</option>
+          <option value="nebula">Nebula</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlays</h3>
+      <label><input type="checkbox" id="showClock" checked onchange="saveSettings()" /> Corner clock</label>
+    </div>
   </div>
 
   <canvas id="canvas"></canvas>
-
-  <div class="weather-overlay hidden" id="weatherOverlay">
-    <div class="temp">--&deg;</div>
-    <div class="desc">Weather unavailable</div>
+  <div class="corner-clock" id="cornerClock">
+    <div class="clock-time" id="clockTime"></div>
+    <div class="clock-date" id="clockDate"></div>
   </div>
-
-  <div class="corner-clock" id="cornerClock"></div>
   <div class="reload-indicator" id="sseIndicator"></div>
 
   <script>
     const PACK_ID = 'ambient';
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
     let theme = 'aurora';
-    let showWeather = false;
     let showClock = true;
-    let animFrame;
+    let particles = [];
+    let animId;
 
-    function resize() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+    window.addEventListener('resize', () => { resize(); initTheme(); });
     resize();
 
-    // ── Themes ───────────────────────────────────────────────
-    const themes = {
-      aurora: {
-        colors: ['#0b3d2e', '#1a237e', '#4a148c', '#006064', '#1b5e20'],
-        speed: 0.0004,
-        layers: 5,
-      },
-      ocean: {
-        colors: ['#01579b', '#0277bd', '#0288d1', '#039be5', '#0d47a1'],
-        speed: 0.0006,
-        layers: 6,
-      },
-      gradient: {
-        colors: ['#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3'],
-        speed: 0.0003,
-        layers: 4,
-      },
-    };
+    // ── THEMES ───────────────────────────────────────────────
 
-    function draw(t) {
-      const cfg = themes[theme] || themes.aurora;
-      const w = canvas.width;
-      const h = canvas.height;
+    function initTheme() {
+      particles = [];
+      switch (theme) {
+        case 'stars':    initStars(); break;
+        case 'rain':     initRain(); break;
+        case 'fireflies':initFireflies(); break;
+        case 'lava':     initLava(); break;
+        default: break; // aurora, ocean, nebula use procedural drawing
+      }
+    }
 
-      // Dark fade
-      ctx.fillStyle = 'rgba(5, 5, 16, 0.03)';
-      ctx.fillRect(0, 0, w, h);
-
-      for (let i = 0; i < cfg.layers; i++) {
-        const color = cfg.colors[i % cfg.colors.length];
-        const phase = t * cfg.speed + i * 1.2;
-        const amplitude = h * 0.15;
-        const yBase = h * (0.25 + i * 0.12);
-
+    // ─ Aurora Borealis ─
+    function drawAurora(t) {
+      ctx.fillStyle = 'rgba(2,2,6,0.04)';
+      ctx.fillRect(0,0,W,H);
+      const colors = ['#0d47a1','#1b5e20','#4a148c','#006064','#1a237e','#00695c'];
+      for (let i = 0; i < 6; i++) {
+        const phase = t * 0.0003 + i * 1.1;
+        const yBase = H * (0.15 + i * 0.1);
+        const amp = H * 0.12;
         ctx.beginPath();
-        ctx.moveTo(0, h);
-
-        for (let x = 0; x <= w; x += 4) {
+        ctx.moveTo(0, H);
+        for (let x = 0; x <= W; x += 3) {
           const y = yBase
-            + Math.sin(x * 0.003 + phase) * amplitude
-            + Math.sin(x * 0.001 - phase * 0.7) * amplitude * 0.5
-            + Math.cos(x * 0.005 + phase * 1.3 + i) * amplitude * 0.3;
+            + Math.sin(x*0.002 + phase)*amp
+            + Math.sin(x*0.0008 - phase*0.6)*amp*0.6
+            + Math.cos(x*0.004 + phase*1.2 + i)*amp*0.3;
           ctx.lineTo(x, y);
         }
-
-        ctx.lineTo(w, h);
+        ctx.lineTo(W, H);
         ctx.closePath();
-
-        ctx.fillStyle = color + '18'; // low alpha hex
+        ctx.fillStyle = colors[i] + '12';
         ctx.fill();
-
-        // Glow line on top
+        // glow stroke
         ctx.beginPath();
-        for (let x = 0; x <= w; x += 4) {
+        for (let x = 0; x <= W; x += 3) {
           const y = yBase
-            + Math.sin(x * 0.003 + phase) * amplitude
-            + Math.sin(x * 0.001 - phase * 0.7) * amplitude * 0.5
-            + Math.cos(x * 0.005 + phase * 1.3 + i) * amplitude * 0.3;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+            + Math.sin(x*0.002 + phase)*amp
+            + Math.sin(x*0.0008 - phase*0.6)*amp*0.6
+            + Math.cos(x*0.004 + phase*1.2 + i)*amp*0.3;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
-        ctx.strokeStyle = color + '30';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = colors[i] + '25';
+        ctx.lineWidth = 2;
         ctx.stroke();
       }
+    }
 
-      animFrame = requestAnimationFrame(draw);
+    // ─ Starfield ─
+    function initStars() {
+      for (let i = 0; i < 400; i++) {
+        particles.push({
+          x: Math.random()*W, y: Math.random()*H,
+          r: Math.random()*1.5+0.3,
+          brightness: Math.random(),
+          speed: Math.random()*0.02+0.005,
+          twinkleOffset: Math.random()*Math.PI*2,
+        });
+      }
+      // Shooting stars
+      for (let i = 0; i < 3; i++) {
+        particles.push({
+          type: 'shooting',
+          x: -100, y: Math.random()*H*0.5,
+          vx: 4+Math.random()*3, vy: 1+Math.random()*2,
+          life: 0, maxLife: 80+Math.random()*60,
+          delay: Math.random()*600+200,
+          timer: 0,
+        });
+      }
+    }
+    function drawStars(t) {
+      ctx.fillStyle = '#020208';
+      ctx.fillRect(0,0,W,H);
+      // Milky way band
+      const grd = ctx.createLinearGradient(0, H*0.3, W, H*0.5);
+      grd.addColorStop(0, 'transparent');
+      grd.addColorStop(0.3, 'rgba(100,120,180,0.015)');
+      grd.addColorStop(0.5, 'rgba(120,100,160,0.02)');
+      grd.addColorStop(0.7, 'rgba(100,120,180,0.015)');
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,W,H);
+
+      for (const p of particles) {
+        if (p.type === 'shooting') {
+          p.timer++;
+          if (p.timer < p.delay) continue;
+          p.life++;
+          p.x += p.vx;
+          p.y += p.vy;
+          const alpha = 1 - p.life/p.maxLife;
+          if (alpha <= 0) {
+            p.x = -100; p.y = Math.random()*H*0.4;
+            p.life = 0; p.timer = 0; p.delay = Math.random()*800+300;
+            continue;
+          }
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - p.vx*8, p.y - p.vy*8);
+          ctx.strokeStyle = `rgba(255,255,255,${alpha*0.6})`;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          continue;
+        }
+        const twinkle = 0.4 + 0.6*Math.sin(t*p.speed + p.twinkleOffset);
+        const alpha = p.brightness * twinkle;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(220,230,255,${alpha})`;
+        ctx.fill();
+        if (p.r > 1) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r*3, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(180,200,255,${alpha*0.08})`;
+          ctx.fill();
+        }
+      }
+    }
+
+    // ─ Night Rain ─
+    function initRain() {
+      for (let i = 0; i < 200; i++) {
+        particles.push({
+          x: Math.random()*W, y: Math.random()*H,
+          len: 10 + Math.random()*20,
+          speed: 8 + Math.random()*12,
+          opacity: 0.1 + Math.random()*0.2,
+          width: Math.random() < 0.3 ? 1.5 : 0.8,
+        });
+      }
+    }
+    function drawRain(t) {
+      ctx.fillStyle = 'rgba(5,5,15,0.15)';
+      ctx.fillRect(0,0,W,H);
+      // Subtle city glow at bottom
+      const grd = ctx.createLinearGradient(0, H*0.7, 0, H);
+      grd.addColorStop(0, 'transparent');
+      grd.addColorStop(1, 'rgba(20,25,40,0.3)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,W,H);
+
+      for (const p of particles) {
+        p.y += p.speed;
+        p.x += Math.sin(t*0.001 + p.x*0.01)*0.3; // slight wind
+        if (p.y > H) {
+          p.y = -p.len;
+          p.x = Math.random()*W;
+        }
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + 0.5, p.y + p.len);
+        ctx.strokeStyle = `rgba(140,170,220,${p.opacity})`;
+        ctx.lineWidth = p.width;
+        ctx.stroke();
+      }
+    }
+
+    // ─ Fireflies ─
+    function initFireflies() {
+      for (let i = 0; i < 60; i++) {
+        particles.push({
+          x: Math.random()*W, y: Math.random()*H,
+          vx: (Math.random()-0.5)*0.5,
+          vy: (Math.random()-0.5)*0.3,
+          phase: Math.random()*Math.PI*2,
+          speed: 0.01 + Math.random()*0.02,
+          r: 1.5 + Math.random()*2,
+          hue: 50 + Math.random()*20,
+        });
+      }
+    }
+    function drawFireflies(t) {
+      ctx.fillStyle = 'rgba(5,8,3,0.06)';
+      ctx.fillRect(0,0,W,H);
+      for (const p of particles) {
+        p.x += p.vx + Math.sin(t*0.0005 + p.phase)*0.3;
+        p.y += p.vy + Math.cos(t*0.0004 + p.phase)*0.2;
+        if (p.x < -20) p.x = W+20;
+        if (p.x > W+20) p.x = -20;
+        if (p.y < -20) p.y = H+20;
+        if (p.y > H+20) p.y = -20;
+        const glow = 0.3 + 0.7 * Math.max(0, Math.sin(t*p.speed + p.phase));
+        if (glow < 0.1) continue;
+        // outer glow
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r*8, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue},80%,60%,${glow*0.06})`;
+        ctx.fill();
+        // inner glow
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r*3, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue},80%,70%,${glow*0.15})`;
+        ctx.fill();
+        // core
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue},60%,85%,${glow*0.8})`;
+        ctx.fill();
+      }
+    }
+
+    // ─ Deep Ocean ─
+    function drawOcean(t) {
+      ctx.fillStyle = 'rgba(1,3,15,0.03)';
+      ctx.fillRect(0,0,W,H);
+      const colors = ['#01579b','#0277bd','#0288d1','#0097a7','#00838f','#006064'];
+      for (let i = 0; i < 7; i++) {
+        const phase = t * 0.0004 + i * 0.9;
+        const yBase = H * (0.3 + i * 0.08);
+        const amp = H * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        for (let x = 0; x <= W; x += 3) {
+          const y = yBase
+            + Math.sin(x*0.003 + phase)*amp
+            + Math.sin(x*0.001 - phase*0.5)*amp*0.7
+            + Math.cos(x*0.006 + phase*1.5)*amp*0.2;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, H); ctx.closePath();
+        ctx.fillStyle = (colors[i%colors.length]) + '10';
+        ctx.fill();
+      }
+      // Caustic light patches
+      for (let i = 0; i < 5; i++) {
+        const cx = W*(0.1 + i*0.2) + Math.sin(t*0.0002 + i)*50;
+        const cy = H*0.6 + Math.cos(t*0.0003 + i*2)*30;
+        const r = 60 + Math.sin(t*0.001 + i)*20;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(0,150,200,0.015)';
+        ctx.fill();
+      }
+    }
+
+    // ─ Lava Flow ─
+    function initLava() {
+      for (let i = 0; i < 30; i++) {
+        particles.push({
+          x: Math.random()*W, y: H + Math.random()*100,
+          r: 20 + Math.random()*40,
+          vx: (Math.random()-0.5)*0.3,
+          vy: -0.2 - Math.random()*0.5,
+          hue: Math.random()*30,
+        });
+      }
+    }
+    function drawLava(t) {
+      ctx.fillStyle = 'rgba(10,2,0,0.04)';
+      ctx.fillRect(0,0,W,H);
+      // Base glow at bottom
+      const grd = ctx.createLinearGradient(0, H*0.5, 0, H);
+      grd.addColorStop(0, 'transparent');
+      grd.addColorStop(0.5, 'rgba(40,5,0,0.1)');
+      grd.addColorStop(1, 'rgba(80,10,0,0.15)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0,0,W,H);
+      // Lava waves
+      for (let i = 0; i < 5; i++) {
+        const phase = t * 0.0002 + i * 1.3;
+        const yBase = H * (0.7 + i * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        for (let x = 0; x <= W; x += 3) {
+          const y = yBase + Math.sin(x*0.003 + phase)*H*0.03 + Math.sin(x*0.001 - phase*0.7)*H*0.02;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, H); ctx.closePath();
+        const hue = 10 + i * 5;
+        ctx.fillStyle = `hsla(${hue},90%,${15+i*5}%,0.08)`;
+        ctx.fill();
+      }
+      // Floating embers
+      for (const p of particles) {
+        p.x += p.vx + Math.sin(t*0.001 + p.x*0.005)*0.5;
+        p.y += p.vy;
+        if (p.y < -p.r*2) { p.y = H + p.r; p.x = Math.random()*W; }
+        const glow = 0.5 + 0.5*Math.sin(t*0.003 + p.x*0.01);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue},100%,50%,${0.02*glow})`;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r*0.3, 0, Math.PI*2);
+        ctx.fillStyle = `hsla(${p.hue+10},100%,70%,${0.08*glow})`;
+        ctx.fill();
+      }
+    }
+
+    // ─ Nebula ─
+    function drawNebula(t) {
+      ctx.fillStyle = 'rgba(2,1,8,0.02)';
+      ctx.fillRect(0,0,W,H);
+      const centers = [
+        { x: W*0.3, y: H*0.4, hue: 280, r: 200 },
+        { x: W*0.7, y: H*0.5, hue: 200, r: 180 },
+        { x: W*0.5, y: H*0.3, hue: 320, r: 150 },
+        { x: W*0.2, y: H*0.7, hue: 220, r: 160 },
+      ];
+      for (const c of centers) {
+        const cx = c.x + Math.sin(t*0.0001 + c.hue)*40;
+        const cy = c.y + Math.cos(t*0.00015 + c.hue)*30;
+        const r = c.r + Math.sin(t*0.0002)*20;
+        const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grd.addColorStop(0, `hsla(${c.hue + Math.sin(t*0.0001)*10},70%,40%,0.02)`);
+        grd.addColorStop(0.5, `hsla(${c.hue},50%,30%,0.008)`);
+        grd.addColorStop(1, 'transparent');
+        ctx.fillStyle = grd;
+        ctx.fillRect(cx-r, cy-r, r*2, r*2);
+      }
+      // Tiny stars
+      if (Math.random() < 0.3) {
+        ctx.beginPath();
+        ctx.arc(Math.random()*W, Math.random()*H, Math.random()*0.8+0.2, 0, Math.PI*2);
+        ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.3})`;
+        ctx.fill();
+      }
+    }
+
+    // ── Main loop ────────────────────────────────────────────
+    function draw(t) {
+      switch (theme) {
+        case 'aurora':    drawAurora(t); break;
+        case 'stars':     drawStars(t); break;
+        case 'rain':      drawRain(t); break;
+        case 'fireflies': drawFireflies(t); break;
+        case 'ocean':     drawOcean(t); break;
+        case 'lava':      drawLava(t); break;
+        case 'nebula':    drawNebula(t); break;
+      }
+      animId = requestAnimationFrame(draw);
     }
 
     function startAnimation() {
-      if (animFrame) cancelAnimationFrame(animFrame);
-      // Clear canvas for theme switch
-      ctx.fillStyle = '#050510';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      animFrame = requestAnimationFrame(draw);
+      if (animId) cancelAnimationFrame(animId);
+      ctx.fillStyle = '#020206';
+      ctx.fillRect(0,0,W,H);
+      initTheme();
+      animId = requestAnimationFrame(draw);
     }
 
     // ── Corner clock ─────────────────────────────────────────
     function updateCornerClock() {
       const el = document.getElementById('cornerClock');
-      if (!showClock) { el.style.opacity = '0'; return; }
-      el.style.opacity = '';
+      el.className = showClock ? 'corner-clock' : 'corner-clock hidden';
+      if (!showClock) return;
       const now = new Date();
       const h = String(now.getHours() % 12 || 12).padStart(2, '0');
       const m = String(now.getMinutes()).padStart(2, '0');
-      el.textContent = `${h}:${m}`;
-    }
-
-    // ── Weather placeholder ──────────────────────────────────
-    function updateWeatherVisibility() {
-      const el = document.getElementById('weatherOverlay');
-      el.classList.toggle('hidden', !showWeather);
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
     }
 
     // ── Settings ─────────────────────────────────────────────
     async function loadSettings() {
       try {
-        const res = await fetch(`/api/config/${PACK_ID}`);
+        const res = await fetch('/api/config/' + PACK_ID);
         const cfg = await res.json();
         if (cfg.theme) theme = cfg.theme;
-        if (cfg.showWeather !== undefined) showWeather = cfg.showWeather;
         if (cfg.showClock !== undefined) showClock = cfg.showClock;
         document.getElementById('themeSelect').value = theme;
-        document.getElementById('showWeather').checked = showWeather;
         document.getElementById('showClock').checked = showClock;
       } catch {}
       startAnimation();
-      updateWeatherVisibility();
+      updateCornerClock();
     }
 
     async function saveSettings() {
       theme = document.getElementById('themeSelect').value;
-      showWeather = document.getElementById('showWeather').checked;
       showClock = document.getElementById('showClock').checked;
-      updateWeatherVisibility();
+      updateCornerClock();
       startAnimation();
       try {
-        await fetch(`/api/config/${PACK_ID}`, {
+        await fetch('/api/config/' + PACK_ID, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ theme, showWeather, showClock }),
+          body: JSON.stringify({ theme, showClock }),
         });
       } catch {}
     }
@@ -300,35 +512,24 @@
     function toggleSettings() {
       document.getElementById('settingsPanel').classList.toggle('open');
     }
-
     document.addEventListener('click', (e) => {
-      const panel = document.getElementById('settingsPanel');
-      const btn = document.querySelector('.settings-btn');
-      if (!panel.contains(e.target) && e.target !== btn) {
-        panel.classList.remove('open');
-      }
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
     });
 
     // ── SSE ──────────────────────────────────────────────────
     function connectSSE() {
-      const indicator = document.getElementById('sseIndicator');
+      const ind = document.getElementById('sseIndicator');
       const es = new EventSource('/api/events');
-      es.onopen = () => indicator.classList.add('connected');
+      es.onopen = () => ind.classList.add('connected');
       es.addEventListener('packChanged', (e) => {
-        const data = JSON.parse(e.data);
-        if (data.activePackId !== PACK_ID) {
-          window.location.href = '/';
-        }
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
       });
-      es.onerror = () => {
-        indicator.classList.remove('connected');
-        es.close();
-        setTimeout(connectSSE, 5000);
-      };
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
     }
 
     loadSettings();
-    updateCornerClock();
     setInterval(updateCornerClock, 30000);
     connectSSE();
   </script>

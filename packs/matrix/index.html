@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Matrix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 2;
+      transition: opacity 0.5s;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+    .clock-overlay .time {
+      font-family: 'Inter', sans-serif;
+      font-size: 16vw;
+      font-weight: 100;
+      color: rgba(0, 255, 65, 0.15);
+      text-shadow: 0 0 40px rgba(0,255,65,0.1), 0 0 80px rgba(0,255,65,0.05);
+      letter-spacing: 0.05em;
+    }
+    .clock-overlay .date {
+      font-family: 'Inter', sans-serif;
+      font-size: 2.5vw;
+      font-weight: 200;
+      color: rgba(0, 255, 65, 0.08);
+      margin-top: 1vh;
+      letter-spacing: 0.1em;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #0a3a0a; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(0,10,0,0.95); border: 1px solid #0a3a0a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #0a5a0a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #0a8a0a; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #001200; color: #0a8a0a; border: 1px solid #0a3a0a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #00ff41; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0a1a0a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #0a0a0a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #00ff41; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Style</h3>
+      <label>
+        <select id="colorMode" onchange="saveSettings()">
+          <option value="green">Classic Green</option>
+          <option value="blue">Blue Pill</option>
+          <option value="red">Red Pill</option>
+          <option value="amber">Amber Terminal</option>
+          <option value="purple">Purple Haze</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Density</h3>
+      <label>
+        <select id="density" onchange="saveSettings()">
+          <option value="light">Light</option>
+          <option value="normal" selected>Normal</option>
+          <option value="heavy">Heavy</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" checked onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'matrix';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, columns, drops;
+    let colorMode = 'green';
+    let density = 'normal';
+    let showClock = true;
+    let fontSize = 14;
+
+    const COLORS = {
+      green:  { main: '#00ff41', dim: '#003b00', bg: 'rgba(0,0,0,0.05)' },
+      blue:   { main: '#00b4ff', dim: '#001a33', bg: 'rgba(0,0,0,0.05)' },
+      red:    { main: '#ff0040', dim: '#330008', bg: 'rgba(0,0,0,0.05)' },
+      amber:  { main: '#ffb000', dim: '#332200', bg: 'rgba(0,0,0,0.05)' },
+      purple: { main: '#bf40ff', dim: '#1a0033', bg: 'rgba(0,0,0,0.05)' },
+    };
+
+    // Characters: mix of katakana, latin, digits, symbols
+    const CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+=<>~';
+
+    function init() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      const densityMap = { light: 20, normal: 14, heavy: 10 };
+      fontSize = densityMap[density] || 14;
+      columns = Math.floor(W / fontSize);
+      drops = new Array(columns).fill(0).map(() => ({
+        y: Math.random() * -100,
+        speed: 0.3 + Math.random() * 0.7,
+        length: 8 + Math.floor(Math.random() * 20),
+        chars: [],
+      }));
+      // Pre-fill character trails
+      for (const d of drops) {
+        for (let i = 0; i < d.length; i++) {
+          d.chars.push(CHARS[Math.floor(Math.random() * CHARS.length)]);
+        }
+      }
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    window.addEventListener('resize', init);
+    init();
+
+    function draw() {
+      const pal = COLORS[colorMode] || COLORS.green;
+
+      // Fade
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.font = `${fontSize}px monospace`;
+
+      for (let i = 0; i < columns; i++) {
+        const d = drops[i];
+        const x = i * fontSize;
+
+        // Randomly change a character in the trail
+        if (Math.random() < 0.05) {
+          const idx = Math.floor(Math.random() * d.chars.length);
+          d.chars[idx] = CHARS[Math.floor(Math.random() * CHARS.length)];
+        }
+
+        // Draw trail
+        for (let j = 0; j < d.length; j++) {
+          const row = Math.floor(d.y) - j;
+          if (row < 0 || row * fontSize > H) continue;
+
+          const y = row * fontSize;
+          const alpha = 1 - (j / d.length);
+
+          if (j === 0) {
+            // Head: bright white/green
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = pal.main;
+          } else if (j < 3) {
+            ctx.fillStyle = pal.main;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = pal.main;
+          } else {
+            const a = Math.max(0.05, alpha * 0.6);
+            ctx.fillStyle = pal.main;
+            ctx.globalAlpha = a;
+            ctx.shadowBlur = 0;
+          }
+
+          ctx.fillText(d.chars[j % d.chars.length], x, y);
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
+        }
+
+        // Advance
+        d.y += d.speed;
+
+        // Reset when off screen
+        if ((d.y - d.length) * fontSize > H) {
+          d.y = Math.random() * -20;
+          d.speed = 0.3 + Math.random() * 0.7;
+          d.length = 8 + Math.floor(Math.random() * 20);
+        }
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    // Clock overlay
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const pal = COLORS[colorMode] || COLORS.green;
+      document.querySelector('.clock-overlay .time').style.color = pal.main.replace(')', ',0.15)').replace('rgb', 'rgba');
+      document.querySelector('.clock-overlay .time').style.textShadow = `0 0 40px ${pal.main}33, 0 0 80px ${pal.main}1a`;
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.density) density = cfg.density;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('density').value = density;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      init();
+      updateClock();
+    }
+    async function saveSettings() {
+      colorMode = document.getElementById('colorMode').value;
+      density = document.getElementById('density').value;
+      showClock = document.getElementById('showClock').checked;
+      init();
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ colorMode, density, showClock }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 10000);
+    requestAnimationFrame(draw);
+    connectSSE();
+  </script>
+</body>
+</html>

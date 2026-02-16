@@ -1,0 +1,9 @@
+{
+  "name": "Word Clock",
+  "description": "Time displayed as illuminated words in a letter grid",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🔤",
+  "color": "#ff7043",
+  "hasBackend": false
+}
