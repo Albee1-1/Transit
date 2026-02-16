@@ -1,0 +1,10 @@
+{
+  "name": "NYC Transit",
+  "description": "Real-time subway, bus, and bike arrivals",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🚇",
+  "color": "#ff6600",
+  "hasBackend": true,
+  "backendPort": 3001
+}

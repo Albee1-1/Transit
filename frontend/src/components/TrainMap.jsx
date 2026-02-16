@@ -105,7 +105,7 @@ function useAnimatedVehicles(rawVehicles, durationMs = 9000) {
     for (const v of rawVehicles || []) {
       const id = v.vehicleId || `${v.routeId}-${v.direction || 'X'}-${v.tripId || v.nextStop}`;
       const current = prev.get(id);
-      if (!current) {
+      if (!current || !Number.isFinite(current.lat) || !Number.isFinite(current.lon)) {
         next.set(id, {
           baseLat: v.lat,
           baseLon: v.lon,
@@ -161,9 +161,19 @@ function useAnimatedVehicles(rawVehicles, durationMs = 9000) {
   return animated;
 }
 
+function validCoord(lat, lon) {
+  return Number.isFinite(lat) && Number.isFinite(lon);
+}
+
 export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStations, citibikeStations }) {
-  const center = [stationLat || 40.7484, stationLon || -73.9967];
-  const animatedVehicles = useAnimatedVehicles(vehicles, 9000);
+  const center = [
+    Number.isFinite(stationLat) ? stationLat : 40.7484,
+    Number.isFinite(stationLon) ? stationLon : -73.9967,
+  ];
+
+  // Filter out vehicles with invalid coordinates before animation
+  const safeVehicles = (vehicles || []).filter((v) => validCoord(v.lat, v.lon));
+  const animatedVehicles = useAnimatedVehicles(safeVehicles, 9000);
 
   return (
     <MapContainer
@@ -177,7 +187,7 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
       <Recenter lat={center[0]} lon={center[1]} />
 
       {/* Nearby station dots (small white) */}
-      {nearbyStations?.map((s) => (
+      {nearbyStations?.filter((s) => validCoord(s.lat, s.lon)).map((s) => (
         <CircleMarker
           key={s.id}
           center={[s.lat, s.lon]}
@@ -200,12 +210,12 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
       ))}
 
       {/* User location (blinking blue dot) */}
-      {stationLat && stationLon && (
+      {validCoord(stationLat, stationLon) && (
         <UserLocationDot lat={stationLat} lon={stationLon} />
       )}
 
       {/* Citibike station markers */}
-      {citibikeStations?.map((s) => {
+      {citibikeStations?.filter((s) => validCoord(s.lat, s.lon)).map((s) => {
         const bikeIcon = divIcon({
           className: 'citibike-icon-wrapper',
           html: `<div style="background:#0052FF;color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5);">${s.bikes}</div>`,
@@ -233,7 +243,7 @@ export default function TrainMap({ stationLat, stationLon, vehicles, nearbyStati
       })}
 
       {/* Vehicle markers (subway trains + buses) */}
-      {animatedVehicles.map((v, i) => {
+      {animatedVehicles.filter((v) => validCoord(v.lat, v.lon)).map((v, i) => {
         const line = SUBWAY_LINES[v.routeId];
         const isBus = !line && v.color;
         const color = v.color || line?.color || '#808183';

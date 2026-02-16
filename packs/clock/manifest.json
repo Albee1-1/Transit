@@ -1,0 +1,9 @@
+{
+  "name": "Clock",
+  "description": "Full-screen time and date display",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🕐",
+  "color": "#4fc3f7",
+  "hasBackend": false
+}

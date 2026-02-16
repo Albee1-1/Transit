@@ -1,0 +1,16 @@
+[Unit]
+Description=Chromium Kiosk Display
+After=graphical-session.target display-shell.service
+Wants=display-shell.service
+
+[Service]
+Type=simple
+User=pi
+Environment=DISPLAY=:0
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/pi/nyc-subway-display/kiosk.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Chromium kiosk launcher for Raspberry Pi.
-# Copy to ~/.config/autostart/subway-kiosk.desktop  (see below)
-# or call directly from your desktop session.
+# Points at the Display Shell on port 3000, which redirects
+# to the active pack automatically.
 
-# Wait for the backend to be ready
-sleep 5
+# Wait for the shell server to be ready
+sleep 3
 
 # Disable screen blanking & power management
 xset s off
@@ -25,4 +25,4 @@ chromium-browser \
   --start-fullscreen \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
-  http://localhost:3001
+  http://localhost:3000

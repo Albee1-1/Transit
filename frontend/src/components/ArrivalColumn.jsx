@@ -69,31 +69,38 @@ function SkeletonList() {
 }
 
 // ── Train/bus arrival row ────────────────────────────────────
-function ArrivalRow({ train, index, isBus }) {
+function ArrivalRow({ train, index, isBus, walkTime }) {
   const secs = train.arrivalTime - Math.floor(Date.now() / 1000);
+  const minsUntil = secs / 60;
   const isFirst = index === 0;
   const isNow = secs <= 30;
+  const missed = walkTime != null && walkTime > 0 && minsUntil > 0 && walkTime > minsUntil;
 
   return (
     <div
       className={`arrival-row fade-in flex items-center justify-between px-2 py-1.5 rounded transition-all ${
-        isFirst ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]'
-      } ${isNow ? 'arriving' : ''}`}
+        missed ? 'opacity-40' : isFirst ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]'
+      } ${isNow && !missed ? 'arriving' : ''}`}
       style={{ animationDelay: `${index * 60}ms` }}
     >
       <span className="text-gray-400 text-[11px] truncate flex-1 pr-2">
         {train.destination}
       </span>
-      {train.arrivalTime ? (
-        <CountdownDisplay arrivalTime={train.arrivalTime} />
-      ) : (
-        <span className="text-gray-500 text-sm">---</span>
-      )}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {missed && (
+          <span className="text-red-500 text-[9px] font-bold uppercase tracking-wide">MISSED</span>
+        )}
+        {train.arrivalTime ? (
+          <CountdownDisplay arrivalTime={train.arrivalTime} />
+        ) : (
+          <span className="text-gray-500 text-sm">---</span>
+        )}
+      </div>
     </div>
   );
 }
 
-function TrainList({ trains, emptyMsg, isBus }) {
+function TrainList({ trains, emptyMsg, isBus, walkTime }) {
   if (!trains || trains.length === 0) {
     return (
       <div className="flex items-center justify-center py-4">
@@ -105,7 +112,7 @@ function TrainList({ trains, emptyMsg, isBus }) {
   return (
     <div className="space-y-0.5">
       {trains.map((t, i) => (
-        <ArrivalRow key={`${t.tripId}-${i}`} train={t} index={i} isBus={isBus} />
+        <ArrivalRow key={`${t.tripId}-${i}`} train={t} index={i} isBus={isBus} walkTime={walkTime} />
       ))}
     </div>
   );
@@ -191,7 +198,7 @@ export default function ArrivalColumn({ route, arrivalData, loading, isBus, user
               </div>
             </div>
             <div className="flex-1 px-0.5 py-0.5 overflow-hidden">
-              <TrainList trains={northTrains} emptyMsg={emptyLabel} isBus={isBus} />
+              <TrainList trains={northTrains} emptyMsg={emptyLabel} isBus={isBus} walkTime={walk} />
             </div>
           </div>
 
@@ -206,7 +213,7 @@ export default function ArrivalColumn({ route, arrivalData, loading, isBus, user
               </div>
             </div>
             <div className="flex-1 px-0.5 py-0.5 overflow-hidden">
-              <TrainList trains={southTrains} emptyMsg={emptyLabel} isBus={isBus} />
+              <TrainList trains={southTrains} emptyMsg={emptyLabel} isBus={isBus} walkTime={walk} />
             </div>
           </div>
         </div>

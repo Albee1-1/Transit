@@ -1,0 +1,9 @@
+{
+  "name": "Ambient",
+  "description": "Animated ambient display with optional weather",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌊",
+  "color": "#81c784",
+  "hasBackend": false
+}

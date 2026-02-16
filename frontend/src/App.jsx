@@ -178,16 +178,16 @@ export default function App() {
             </div>
           )}
 
-          {/* Map expand button when collapsed */}
+          {/* Map expand bar when collapsed */}
           {mapCollapsed && (
             <button
               onClick={() => setMapCollapsed(false)}
-              className="shrink-0 flex items-center justify-center gap-1.5 py-1 text-[10px] text-gray-500 hover:text-gray-300 border-b border-gray-800/60 bg-black/20 transition-colors"
+              className="shrink-0 flex items-center justify-center gap-2 py-2.5 text-xs text-blue-400 hover:text-blue-300 border-b border-gray-800/60 bg-blue-950/20 hover:bg-blue-950/40 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
-              Show Map (M)
+              Show Live Map
             </button>
           )}
 

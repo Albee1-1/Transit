@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clock</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .clock-container {
+      text-align: center;
+    }
+
+    .time {
+      font-size: 18vw;
+      font-weight: 200;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      color: #ffffff;
+    }
+
+    .time .seconds {
+      font-size: 8vw;
+      color: #555;
+      vertical-align: super;
+      margin-left: 0.1em;
+      transition: opacity 0.3s;
+    }
+
+    .time .seconds.hidden { opacity: 0; }
+
+    .date {
+      font-size: 3.5vw;
+      color: #888;
+      margin-top: 1.5vh;
+      font-weight: 300;
+    }
+
+    .divider {
+      width: 30vw;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #333, transparent);
+      margin: 3vh auto;
+    }
+
+    .day-of-week {
+      font-size: 2.5vw;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5em;
+    }
+
+    /* Settings gear */
+    .settings-btn {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      width: 32px;
+      height: 32px;
+      background: none;
+      border: none;
+      color: #333;
+      font-size: 20px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 10;
+    }
+    body:hover .settings-btn,
+    body:active .settings-btn { opacity: 1; }
+
+    .settings-panel {
+      position: fixed;
+      top: 50px;
+      right: 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      display: none;
+      z-index: 10;
+      min-width: 200px;
+    }
+    .settings-panel.open { display: block; }
+
+    .settings-panel label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #aaa;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    .settings-panel input[type="checkbox"] {
+      accent-color: #4fc3f7;
+    }
+
+    /* SSE reload listener */
+    .reload-indicator {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #2a2a2a;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <label>
+      <input type="checkbox" id="showSeconds" checked onchange="saveSettings()" />
+      Show seconds
+    </label>
+    <label>
+      <input type="checkbox" id="use24h" onchange="saveSettings()" />
+      24-hour format
+    </label>
+  </div>
+
+  <div class="clock-container">
+    <div class="time" id="time">
+      <span id="hhmm">00:00</span><span class="seconds" id="ss">00</span>
+    </div>
+    <div class="date" id="date"></div>
+    <div class="divider"></div>
+    <div class="day-of-week" id="dow"></div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'clock';
+    let showSeconds = true;
+    let use24h = false;
+
+    // Load settings from shell config API
+    async function loadSettings() {
+      try {
+        const res = await fetch(`/api/config/${PACK_ID}`);
+        const cfg = await res.json();
+        if (cfg.showSeconds !== undefined) showSeconds = cfg.showSeconds;
+        if (cfg.use24h !== undefined) use24h = cfg.use24h;
+        document.getElementById('showSeconds').checked = showSeconds;
+        document.getElementById('use24h').checked = use24h;
+      } catch {}
+    }
+
+    async function saveSettings() {
+      showSeconds = document.getElementById('showSeconds').checked;
+      use24h = document.getElementById('use24h').checked;
+      try {
+        await fetch(`/api/config/${PACK_ID}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ showSeconds, use24h }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+
+    // Close settings when clicking outside
+    document.addEventListener('click', (e) => {
+      const panel = document.getElementById('settingsPanel');
+      const btn = document.querySelector('.settings-btn');
+      if (!panel.contains(e.target) && e.target !== btn) {
+        panel.classList.remove('open');
+      }
+    });
+
+    function updateClock() {
+      const now = new Date();
+
+      let h = now.getHours();
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+
+      if (!use24h) {
+        h = h % 12 || 12;
+      }
+      const hStr = String(h).padStart(2, '0');
+
+      document.getElementById('hhmm').textContent = `${hStr}:${m}`;
+      const ssEl = document.getElementById('ss');
+      ssEl.textContent = s;
+      ssEl.className = showSeconds ? 'seconds' : 'seconds hidden';
+
+      const opts = { year: 'numeric', month: 'long', day: 'numeric' };
+      document.getElementById('date').textContent = now.toLocaleDateString('en-US', opts);
+      document.getElementById('dow').textContent = now.toLocaleDateString('en-US', { weekday: 'long' });
+    }
+
+    // SSE: listen for pack changes → reload
+    function connectSSE() {
+      const indicator = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => indicator.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const data = JSON.parse(e.data);
+        if (data.activePackId !== PACK_ID) {
+          window.location.href = '/';
+        }
+      });
+      es.onerror = () => {
+        indicator.classList.remove('connected');
+        es.close();
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    loadSettings();
+    updateClock();
+    setInterval(updateClock, 1000);
+    connectSSE();
+  </script>
+</body>
+</html>

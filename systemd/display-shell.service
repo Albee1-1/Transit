@@ -1,0 +1,18 @@
+[Unit]
+Description=Display Shell Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/nyc-subway-display/shell
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=SHELL_PORT=3000
+Environment=TRANSIT_PORT=3001
+
+[Install]
+WantedBy=multi-user.target

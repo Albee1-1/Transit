@@ -1,0 +1,18 @@
+[Unit]
+Description=Transit Pack Backend (MTA feeds)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/nyc-subway-display/backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3001
+# Environment=MTA_API_KEY=your-key-here
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Display Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #111;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 300;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+
+    .packs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      max-width: 800px;
+      width: 100%;
+    }
+
+    .pack-card {
+      background: #1a1a1a;
+      border: 2px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 24px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .pack-card:hover {
+      border-color: #444;
+      background: #1e1e1e;
+    }
+
+    .pack-card.active {
+      border-color: #4caf50;
+      background: #1a2e1a;
+    }
+
+    .pack-card .icon {
+      font-size: 36px;
+      margin-bottom: 12px;
+    }
+
+    .pack-card .name {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .pack-card .desc {
+      font-size: 13px;
+      color: #888;
+      line-height: 1.4;
+    }
+
+    .pack-card .badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: #4caf50;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      display: none;
+    }
+
+    .pack-card.active .badge { display: block; }
+
+    .status-bar {
+      margin-top: 32px;
+      padding: 12px 20px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #888;
+      max-width: 800px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .status-bar .ok { color: #4caf50; }
+    .status-bar .err { color: #f44336; }
+
+    .loading {
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Display Shell</h1>
+  <p class="subtitle">Select a pack to display</p>
+
+  <div class="packs-grid" id="packsGrid">
+    <div class="loading">Loading packs...</div>
+  </div>
+
+  <div class="status-bar" id="statusBar">Connecting...</div>
+
+  <script>
+    let activePack = '';
+
+    async function loadPacks() {
+      try {
+        const [packsRes, activeRes] = await Promise.all([
+          fetch('/api/packs'),
+          fetch('/api/activePack'),
+        ]);
+        const packs = await packsRes.json();
+        const active = await activeRes.json();
+        activePack = active.activePackId;
+        renderPacks(packs);
+        updateStatus(`Active: ${activePack}`);
+      } catch (err) {
+        updateStatus(`Error loading packs: ${err.message}`, true);
+      }
+    }
+
+    function renderPacks(packs) {
+      const grid = document.getElementById('packsGrid');
+      grid.innerHTML = '';
+      for (const pack of packs) {
+        const card = document.createElement('div');
+        card.className = 'pack-card' + (pack.id === activePack ? ' active' : '');
+        card.innerHTML = `
+          <div class="badge">Active</div>
+          <div class="icon">${pack.icon || ''}</div>
+          <div class="name">${pack.name || pack.id}</div>
+          <div class="desc">${pack.description || ''}</div>
+        `;
+        card.addEventListener('click', () => switchPack(pack.id));
+        grid.appendChild(card);
+      }
+    }
+
+    async function switchPack(packId) {
+      if (packId === activePack) return;
+      try {
+        updateStatus(`Switching to ${packId}...`);
+        const res = await fetch('/api/activePack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packId }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          activePack = data.activePackId;
+          loadPacks();
+          updateStatus(`Switched to ${activePack}`);
+        } else {
+          updateStatus(`Error: ${data.error}`, true);
+        }
+      } catch (err) {
+        updateStatus(`Error: ${err.message}`, true);
+      }
+    }
+
+    function updateStatus(msg, isError) {
+      const bar = document.getElementById('statusBar');
+      bar.innerHTML = isError
+        ? `<span class="err">${msg}</span>`
+        : `<span class="ok">${msg}</span>`;
+    }
+
+    loadPacks();
+  </script>
+</body>
+</html>
