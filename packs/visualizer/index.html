@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #030308; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Inter', sans-serif; text-align: center;
+      pointer-events: none; z-index: 2;
+    }
+    .clock-overlay .time {
+      font-size: 12vw; font-weight: 100;
+      color: rgba(255,255,255,0.06);
+      letter-spacing: 0.05em;
+    }
+    .clock-overlay .date {
+      font-size: 1.5vw; font-weight: 200;
+      color: rgba(255,255,255,0.03);
+      letter-spacing: 0.15em; margin-top: 0.5vh;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #151515;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(5,5,10,0.95); border: 1px solid #1a1a1a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #0a0a0a; color: #888; border: 1px solid #222;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #e040fb; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #111; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Style</h3>
+      <label>
+        <select id="styleSelect" onchange="saveSettings()">
+          <option value="bars">Bars</option>
+          <option value="circular">Circular</option>
+          <option value="wave">Wave</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label>
+        <select id="colorSelect" onchange="saveSettings()">
+          <option value="spectrum">Spectrum</option>
+          <option value="neon">Neon Pink</option>
+          <option value="ice">Ice Blue</option>
+          <option value="fire">Fire</option>
+          <option value="matrix">Matrix</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" checked onchange="saveSettings()" /> Clock</label>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'visualizer';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+    let style = 'bars';
+    let colorScheme = 'spectrum';
+    let showClock = true;
+    const NUM_BARS = 64;
+    const bars = new Array(NUM_BARS).fill(0);
+    const barTargets = new Array(NUM_BARS).fill(0);
+    const barVelocities = new Array(NUM_BARS).fill(0);
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Simulated "music" using layered sine waves
+    function generateBeat(t) {
+      for (let i = 0; i < NUM_BARS; i++) {
+        const freq = (i + 1) / NUM_BARS;
+        // Multiple rhythmic layers
+        const bass = i < 8 ? Math.abs(Math.sin(t * 0.002)) * 0.8 : 0;
+        const mid = (i > 10 && i < 40) ? Math.abs(Math.sin(t * 0.003 + i * 0.3)) * 0.5 : 0;
+        const high = i > 35 ? Math.abs(Math.sin(t * 0.005 + i * 0.5)) * 0.3 : 0;
+        const pulse = Math.abs(Math.sin(t * 0.001 + i * 0.1)) * 0.2;
+        const beat = Math.abs(Math.sin(t * 0.004)) > 0.9 ? 0.4 : 0;
+
+        barTargets[i] = Math.min(1, bass + mid + high + pulse + beat + Math.random() * 0.05);
+      }
+    }
+
+    function updateBars() {
+      for (let i = 0; i < NUM_BARS; i++) {
+        const diff = barTargets[i] - bars[i];
+        barVelocities[i] += diff * 0.15;
+        barVelocities[i] *= 0.75; // damping
+        bars[i] += barVelocities[i];
+        bars[i] = Math.max(0, Math.min(1, bars[i]));
+      }
+    }
+
+    function getColor(i, val) {
+      const norm = i / NUM_BARS;
+      switch (colorScheme) {
+        case 'spectrum':
+          return `hsl(${norm * 300}, 80%, ${30 + val * 40}%)`;
+        case 'neon':
+          return `hsl(${300 + norm * 60}, 100%, ${20 + val * 50}%)`;
+        case 'ice':
+          return `hsl(${190 + norm * 30}, 80%, ${15 + val * 50}%)`;
+        case 'fire':
+          return `hsl(${norm * 40}, 100%, ${15 + val * 45}%)`;
+        case 'matrix':
+          return `hsl(120, 80%, ${10 + val * 45}%)`;
+      }
+    }
+
+    function getGlow(i, val) {
+      const norm = i / NUM_BARS;
+      switch (colorScheme) {
+        case 'spectrum': return `hsla(${norm * 300}, 80%, 50%, ${val * 0.3})`;
+        case 'neon': return `hsla(${300 + norm * 60}, 100%, 50%, ${val * 0.4})`;
+        case 'ice': return `hsla(${190 + norm * 30}, 80%, 50%, ${val * 0.3})`;
+        case 'fire': return `hsla(${norm * 40}, 100%, 50%, ${val * 0.4})`;
+        case 'matrix': return `hsla(120, 80%, 50%, ${val * 0.3})`;
+      }
+    }
+
+    function drawBars() {
+      ctx.fillStyle = 'rgba(3,3,8,0.2)';
+      ctx.fillRect(0, 0, W, H);
+
+      const gap = 3;
+      const barW = (W - gap * (NUM_BARS + 1)) / NUM_BARS;
+      const maxH = H * 0.75;
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        const val = bars[i];
+        const h = val * maxH;
+        const x = gap + i * (barW + gap);
+        const y = H - h;
+
+        // Glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = getGlow(i, val);
+
+        // Bar with gradient
+        const grd = ctx.createLinearGradient(x, H, x, y);
+        grd.addColorStop(0, getColor(i, val * 0.3));
+        grd.addColorStop(1, getColor(i, val));
+        ctx.fillStyle = grd;
+
+        // Rounded top
+        const radius = Math.min(barW / 2, 4);
+        ctx.beginPath();
+        ctx.moveTo(x, H);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.lineTo(x + barW - radius, y);
+        ctx.quadraticCurveTo(x + barW, y, x + barW, y + radius);
+        ctx.lineTo(x + barW, H);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Reflection
+        const refH = h * 0.15;
+        const refGrd = ctx.createLinearGradient(x, H, x, H + refH);
+        refGrd.addColorStop(0, getColor(i, val * 0.1));
+        refGrd.addColorStop(1, 'transparent');
+        ctx.fillStyle = refGrd;
+        ctx.fillRect(x, H, barW, refH);
+      }
+    }
+
+    function drawCircular(t) {
+      ctx.fillStyle = 'rgba(3,3,8,0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      const cx = W / 2, cy = H / 2;
+      const baseR = Math.min(W, H) * 0.2;
+
+      for (let i = 0; i < NUM_BARS; i++) {
+        const angle = (i / NUM_BARS) * Math.PI * 2 - Math.PI / 2;
+        const val = bars[i];
+        const r1 = baseR;
+        const r2 = baseR + val * baseR * 1.2;
+
+        const x1 = cx + Math.cos(angle) * r1;
+        const y1 = cy + Math.sin(angle) * r1;
+        const x2 = cx + Math.cos(angle) * r2;
+        const y2 = cy + Math.sin(angle) * r2;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = getColor(i, val);
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = getGlow(i, val);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      // Inner ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, baseR - 2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawWave(t) {
+      ctx.fillStyle = 'rgba(3,3,8,0.08)';
+      ctx.fillRect(0, 0, W, H);
+
+      for (let layer = 0; layer < 3; layer++) {
+        ctx.beginPath();
+        const yBase = H * (0.4 + layer * 0.1);
+        for (let x = 0; x <= W; x += 2) {
+          const barIdx = Math.floor((x / W) * NUM_BARS);
+          const val = bars[Math.min(barIdx, NUM_BARS - 1)];
+          const y = yBase + Math.sin(x * 0.01 + t * 0.002 + layer) * val * H * 0.15;
+          x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        const norm = layer / 3;
+        ctx.strokeStyle = getColor(Math.floor(norm * NUM_BARS), 0.6);
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = getGlow(Math.floor(norm * NUM_BARS), 0.5);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    function draw(t) {
+      generateBeat(t);
+      updateBars();
+      switch (style) {
+        case 'bars': drawBars(); break;
+        case 'circular': drawCircular(t); break;
+        case 'wave': drawWave(t); break;
+      }
+      requestAnimationFrame(draw);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!showClock) return;
+      const now = new Date();
+      document.getElementById('clockTime').textContent =
+        `${String(now.getHours()%12||12).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      document.getElementById('clockDate').textContent =
+        now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.style) style = cfg.style;
+        if (cfg.colorScheme) colorScheme = cfg.colorScheme;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('styleSelect').value = style;
+        document.getElementById('colorSelect').value = colorScheme;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      updateClock();
+    }
+    async function saveSettings() {
+      style = document.getElementById('styleSelect').value;
+      colorScheme = document.getElementById('colorSelect').value;
+      showClock = document.getElementById('showClock').checked;
+      updateClock();
+      ctx.fillStyle = '#030308'; ctx.fillRect(0,0,W,H);
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ style, colorScheme, showClock }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 30000);
+    requestAnimationFrame(draw);
+    connectSSE();
+  </script>
+</body>
+</html>

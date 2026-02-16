@@ -1,0 +1,9 @@
+{
+  "name": "Zen",
+  "description": "Minimal quotes with breathing animation and gentle ambience",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🧘",
+  "color": "#b39ddb",
+  "hasBackend": false
+}

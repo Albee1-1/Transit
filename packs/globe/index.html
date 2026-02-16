@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Globe</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&family=JetBrains+Mono:wght@200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020208; overflow: hidden; height: 100vh; user-select: none;
+      display: flex; align-items: center; justify-content: center; }
+    canvas { display: block; }
+
+    .info-panel {
+      position: fixed; bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      text-align: center; pointer-events: none; z-index: 5;
+    }
+    .info-panel .time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 5vw; font-weight: 200;
+      color: rgba(255,255,255,0.1);
+      letter-spacing: 0.1em;
+    }
+    .info-panel .utc {
+      font-family: 'Inter', sans-serif;
+      font-size: 1.2vw; font-weight: 200;
+      color: rgba(255,255,255,0.05);
+      letter-spacing: 0.2em; margin-top: 0.5vh;
+      text-transform: uppercase;
+    }
+    .info-panel.hidden { opacity: 0; }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #111;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(5,5,10,0.95); border: 1px solid #1a1a1a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 200px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #0a0a0a; color: #888; border: 1px solid #222;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #26c6da; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #111; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label>
+        <select id="colorSelect" onchange="saveSettings()">
+          <option value="cyan">Cyan</option>
+          <option value="green">Green</option>
+          <option value="amber">Amber</option>
+          <option value="purple">Purple</option>
+          <option value="white">White</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Speed</h3>
+      <label>
+        <select id="speedSelect" onchange="saveSettings()">
+          <option value="slow">Slow</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showInfo" checked onchange="saveSettings()" /> Clock overlay</label>
+      <label><input type="checkbox" id="showStars" checked onchange="saveSettings()" /> Background stars</label>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="info-panel" id="infoPanel">
+    <div class="time" id="infoTime"></div>
+    <div class="utc" id="infoUtc"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'globe';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, R;
+    let globeColor = 'cyan';
+    let speed = 'normal';
+    let showInfo = true;
+    let showStars = true;
+    let stars = [];
+
+    const COLORS = {
+      cyan:   { line: '#26c6da', dim: '#0d4f55', glow: 'rgba(38,198,218,0.15)' },
+      green:  { line: '#66bb6a', dim: '#1a4a1c', glow: 'rgba(102,187,106,0.15)' },
+      amber:  { line: '#ffb74d', dim: '#5a3f1a', glow: 'rgba(255,183,77,0.15)' },
+      purple: { line: '#ba68c8', dim: '#3d1f44', glow: 'rgba(186,104,200,0.15)' },
+      white:  { line: '#888888', dim: '#2a2a2a', glow: 'rgba(150,150,150,0.1)' },
+    };
+    const SPEEDS = { slow: 0.0002, normal: 0.0005, fast: 0.001 };
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      R = Math.min(W, H) * 0.3;
+      initStars();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initStars() {
+      stars = [];
+      if (!showStars) return;
+      for (let i = 0; i < 150; i++) {
+        stars.push({
+          x: Math.random() * W, y: Math.random() * H,
+          r: Math.random() * 1 + 0.2,
+          a: Math.random() * 0.5 + 0.1,
+        });
+      }
+    }
+
+    function project(lat, lon, rot) {
+      lon += rot;
+      const x = Math.cos(lat) * Math.sin(lon);
+      const y = Math.sin(lat);
+      const z = Math.cos(lat) * Math.cos(lon);
+      return { x: x * R + W/2, y: -y * R + H/2, z };
+    }
+
+    function draw(t) {
+      ctx.fillStyle = '#020208';
+      ctx.fillRect(0, 0, W, H);
+
+      const pal = COLORS[globeColor] || COLORS.cyan;
+      const rot = t * SPEEDS[speed] || t * 0.0005;
+
+      // Stars
+      for (const s of stars) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(200,210,230,${s.a * (0.5 + 0.5*Math.sin(t*0.002 + s.x))})`;
+        ctx.fill();
+      }
+
+      // Atmosphere glow
+      const grd = ctx.createRadialGradient(W/2, H/2, R*0.9, W/2, H/2, R*1.4);
+      grd.addColorStop(0, pal.glow);
+      grd.addColorStop(1, 'transparent');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(W/2, H/2, R*1.4, 0, Math.PI*2);
+      ctx.fill();
+
+      // Latitude lines
+      for (let lat = -80; lat <= 80; lat += 20) {
+        const latRad = lat * Math.PI / 180;
+        ctx.beginPath();
+        let started = false;
+        for (let lon = 0; lon <= 360; lon += 3) {
+          const lonRad = lon * Math.PI / 180;
+          const p = project(latRad, lonRad, rot);
+          if (p.z < 0) { started = false; continue; }
+          const alpha = p.z * 0.6;
+          if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = pal.dim;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // Longitude lines
+      for (let lon = 0; lon < 360; lon += 20) {
+        const lonRad = lon * Math.PI / 180;
+        ctx.beginPath();
+        let started = false;
+        for (let lat = -90; lat <= 90; lat += 3) {
+          const latRad = lat * Math.PI / 180;
+          const p = project(latRad, lonRad, rot);
+          if (p.z < 0) { started = false; continue; }
+          if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+          else ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = pal.dim;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+
+      // Equator (bright)
+      ctx.beginPath();
+      let eqStarted = false;
+      for (let lon = 0; lon <= 360; lon += 2) {
+        const lonRad = lon * Math.PI / 180;
+        const p = project(0, lonRad, rot);
+        if (p.z < 0) { eqStarted = false; continue; }
+        if (!eqStarted) { ctx.moveTo(p.x, p.y); eqStarted = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = pal.line;
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = pal.line;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Prime meridian (bright)
+      ctx.beginPath();
+      let pmStarted = false;
+      for (let lat = -90; lat <= 90; lat += 2) {
+        const latRad = lat * Math.PI / 180;
+        const p = project(latRad, 0, rot);
+        if (p.z < 0) { pmStarted = false; continue; }
+        if (!pmStarted) { ctx.moveTo(p.x, p.y); pmStarted = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.strokeStyle = pal.line;
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 5;
+      ctx.shadowColor = pal.line;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Outline circle
+      ctx.beginPath();
+      ctx.arc(W/2, H/2, R, 0, Math.PI*2);
+      ctx.strokeStyle = pal.line + '40';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Marker dots at intersections of key lines (NYC, London, Tokyo)
+      const cities = [
+        { lat: 40.7, lon: -74, label: 'NYC' },
+        { lat: 51.5, lon: 0, label: 'LON' },
+        { lat: 35.7, lon: 139.7, label: 'TKY' },
+        { lat: -33.9, lon: 18.4, label: 'CPT' },
+        { lat: -22.9, lon: -43.2, label: 'RIO' },
+      ];
+      for (const city of cities) {
+        const p = project(city.lat * Math.PI/180, city.lon * Math.PI/180, rot);
+        if (p.z < 0.1) continue;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+        ctx.fillStyle = pal.line;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = pal.line;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.font = '10px Inter';
+        ctx.fillStyle = pal.line + '80';
+        ctx.fillText(city.label, p.x + 6, p.y + 3);
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    function updateInfo() {
+      const el = document.getElementById('infoPanel');
+      el.className = showInfo ? 'info-panel' : 'info-panel hidden';
+      if (!showInfo) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('infoTime').textContent = `${h}:${m}`;
+      const utcH = String(now.getUTCHours()).padStart(2, '0');
+      const utcM = String(now.getUTCMinutes()).padStart(2, '0');
+      document.getElementById('infoUtc').textContent = `UTC ${utcH}:${utcM}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.globeColor) globeColor = cfg.globeColor;
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.showInfo !== undefined) showInfo = cfg.showInfo;
+        if (cfg.showStars !== undefined) showStars = cfg.showStars;
+        document.getElementById('colorSelect').value = globeColor;
+        document.getElementById('speedSelect').value = speed;
+        document.getElementById('showInfo').checked = showInfo;
+        document.getElementById('showStars').checked = showStars;
+      } catch {}
+      initStars();
+      updateInfo();
+    }
+    async function saveSettings() {
+      globeColor = document.getElementById('colorSelect').value;
+      speed = document.getElementById('speedSelect').value;
+      showInfo = document.getElementById('showInfo').checked;
+      showStars = document.getElementById('showStars').checked;
+      initStars();
+      updateInfo();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ globeColor, speed, showInfo, showStars }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateInfo, 30000);
+    requestAnimationFrame(draw);
+    connectSSE();
+  </script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600&family=JetBrains+Mono:wght@200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0c;
+      color: #e0e0e0;
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      padding: 3vh 3vw;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr auto;
+      gap: 2vh 2vw;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid #151518;
+      border-radius: 16px;
+      padding: 3vh 2.5vw;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+    }
+    .card-label {
+      font-size: 10px;
+      font-weight: 500;
+      color: #3a3a3a;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 1.5vh;
+    }
+
+    /* Clock card */
+    .clock-card { grid-column: 1 / 2; grid-row: 1 / 2; }
+    .clock-card .time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: min(10vh, 8vw);
+      font-weight: 200;
+      color: #fff;
+      line-height: 1;
+    }
+    .clock-card .time .seconds {
+      font-size: min(4vh, 3vw);
+      color: #333;
+    }
+    .clock-card .date {
+      font-size: min(2vh, 1.5vw);
+      color: #555;
+      margin-top: 1vh;
+      font-weight: 200;
+    }
+    .clock-card .ampm {
+      font-size: min(2.5vh, 2vw);
+      color: #444;
+      font-weight: 300;
+      margin-left: 0.5em;
+    }
+
+    /* Weather card */
+    .weather-card { grid-column: 2 / 3; grid-row: 1 / 2; }
+    .weather-main {
+      display: flex;
+      align-items: center;
+      gap: 2vw;
+    }
+    .weather-icon { font-size: min(8vh, 6vw); }
+    .weather-temp {
+      font-size: min(8vh, 6vw);
+      font-weight: 100;
+      color: #fff;
+    }
+    .weather-temp .unit { font-size: min(3vh, 2vw); color: #555; }
+    .weather-desc {
+      font-size: min(1.8vh, 1.4vw);
+      color: #666;
+      margin-top: 1vh;
+      font-weight: 200;
+      text-transform: capitalize;
+    }
+    .weather-details {
+      display: flex;
+      gap: 2vw;
+      margin-top: 1.5vh;
+    }
+    .weather-detail {
+      font-size: min(1.4vh, 1.1vw);
+      color: #444;
+      font-weight: 300;
+    }
+    .weather-detail span { color: #888; }
+
+    /* Quote card */
+    .quote-card { grid-column: 1 / 3; grid-row: 2 / 3; display: flex; flex-direction: column; justify-content: center; }
+    .quote-text {
+      font-size: min(3vh, 2.5vw);
+      font-weight: 200;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.6;
+      font-style: italic;
+      text-align: center;
+      transition: opacity 1s ease;
+      padding: 0 5vw;
+    }
+    .quote-text.fading { opacity: 0; }
+    .quote-author {
+      font-size: min(1.4vh, 1.1vw);
+      color: #333;
+      text-align: center;
+      margin-top: 2vh;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 300;
+      transition: opacity 1s ease;
+    }
+    .quote-author.fading { opacity: 0; }
+
+    /* Bottom row */
+    .bottom-row {
+      grid-column: 1 / 3;
+      grid-row: 3 / 4;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .bottom-row .info-item {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: min(1.4vh, 1.1vw);
+      color: #2a2a2a;
+      font-weight: 300;
+    }
+
+    .settings-btn {
+      position: fixed; top: 12px; right: 12px;
+      background: none; border: none; color: #1a1a1a;
+      font-size: 20px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 50px; right: 12px;
+      background: rgba(8,8,10,0.95); border: 1px solid #1a1a1a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 240px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-size: 11px; font-weight: 400; color: #444;
+      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: block; color: #777; font-size: 13px; padding: 4px 0;
+    }
+    .settings-panel input[type="text"] {
+      background: #0a0a0a; color: #aaa; border: 1px solid #222;
+      border-radius: 6px; padding: 8px 10px; font-size: 13px; width: 100%; margin-top: 4px;
+    }
+    .settings-panel button.save-btn {
+      background: #1a2a3a; color: #8ac; border: none;
+      border-radius: 6px; padding: 8px 16px; font-size: 13px;
+      cursor: pointer; width: 100%; margin-top: 12px;
+    }
+
+    .reload-indicator {
+      position: fixed; bottom: 6px; left: 6px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <h3>Weather Location</h3>
+    <label>City or coordinates</label>
+    <input type="text" id="locationInput" placeholder="e.g. New York" />
+    <button class="save-btn" onclick="saveSettings()">Save</button>
+  </div>
+
+  <div class="card clock-card">
+    <div class="card-label">Time</div>
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+
+  <div class="card weather-card">
+    <div class="card-label">Weather</div>
+    <div id="weatherContent">
+      <div class="weather-desc">Loading...</div>
+    </div>
+  </div>
+
+  <div class="card quote-card">
+    <div class="card-label" style="text-align:center">Thought</div>
+    <div class="quote-text" id="quoteText"></div>
+    <div class="quote-author" id="quoteAuthor"></div>
+  </div>
+
+  <div class="bottom-row">
+    <div class="info-item" id="bottomLeft"></div>
+    <div class="info-item" id="bottomCenter"></div>
+    <div class="info-item" id="bottomRight"></div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'dashboard';
+    let location_str = 'New York';
+    let quoteIndex = Math.floor(Math.random() * 100);
+
+    const QUOTES = [
+      { t: "The present moment is filled with joy and happiness.", a: "Thich Nhat Hanh" },
+      { t: "In the middle of difficulty lies opportunity.", a: "Albert Einstein" },
+      { t: "The only way to do great work is to love what you do.", a: "Steve Jobs" },
+      { t: "Simplicity is the ultimate sophistication.", a: "Leonardo da Vinci" },
+      { t: "The mind is everything. What you think you become.", a: "Buddha" },
+      { t: "Not all those who wander are lost.", a: "J.R.R. Tolkien" },
+      { t: "The journey of a thousand miles begins with a single step.", a: "Lao Tzu" },
+      { t: "Everything you can imagine is real.", a: "Pablo Picasso" },
+      { t: "Life is what happens when you're busy making other plans.", a: "John Lennon" },
+      { t: "Nature does not hurry, yet everything is accomplished.", a: "Lao Tzu" },
+      { t: "Wherever you go, there you are.", a: "Jon Kabat-Zinn" },
+      { t: "Every moment is a fresh beginning.", a: "T.S. Eliot" },
+      { t: "Do what you can, with what you have, where you are.", a: "Theodore Roosevelt" },
+    ];
+
+    function updateClock() {
+      const now = new Date();
+      let h = now.getHours();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('clockTime').innerHTML =
+        `${String(h).padStart(2,'0')}:${m}<span class="seconds">:${s}</span><span class="ampm">${ampm}</span>`;
+      document.getElementById('clockDate').textContent =
+        now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+      // Bottom bar
+      const dayOfYear = Math.floor((now - new Date(now.getFullYear(),0,0)) / 86400000);
+      document.getElementById('bottomLeft').textContent = `DAY ${dayOfYear} OF ${now.getFullYear() % 4 === 0 ? 366 : 365}`;
+      document.getElementById('bottomCenter').textContent = `WEEK ${Math.ceil(dayOfYear / 7)}`;
+      const pct = Math.round((dayOfYear / 365) * 100);
+      document.getElementById('bottomRight').textContent = `YEAR ${pct}% COMPLETE`;
+    }
+
+    function weatherIcon(code) {
+      if (code <= 1) return '☀️'; if (code <= 3) return '⛅'; if (code <= 48) return '☁️';
+      if (code <= 67) return '🌧️'; if (code <= 77) return '❄️'; return '⛈️';
+    }
+    function weatherDesc(code) {
+      if (code === 0) return 'Clear'; if (code <= 3) return 'Partly cloudy'; if (code <= 48) return 'Foggy';
+      if (code <= 65) return 'Rain'; if (code <= 77) return 'Snow'; return 'Storm';
+    }
+
+    async function fetchWeather() {
+      if (!location_str) return;
+      try {
+        let lat, lon, name;
+        const coords = location_str.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+        if (coords) { lat = coords[1]; lon = coords[2]; name = location_str; }
+        else {
+          const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location_str)}&count=1`)).json();
+          if (!g.results?.length) return;
+          lat = g.results[0].latitude; lon = g.results[0].longitude;
+          name = g.results[0].name;
+        }
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weathercode,relativehumidity_2m,apparent_temperature,windspeed_10m&timezone=auto`;
+        const data = await (await fetch(url)).json();
+        const c = data.current;
+        const temp = Math.round(c.temperature_2m * 9/5 + 32);
+        const feels = Math.round(c.apparent_temperature * 9/5 + 32);
+        document.getElementById('weatherContent').innerHTML = `
+          <div class="weather-main">
+            <div class="weather-icon">${weatherIcon(c.weathercode)}</div>
+            <div class="weather-temp">${temp}<span class="unit">&deg;F</span></div>
+          </div>
+          <div class="weather-desc">${weatherDesc(c.weathercode)} in ${name}</div>
+          <div class="weather-details">
+            <div class="weather-detail">Feels <span>${feels}&deg;</span></div>
+            <div class="weather-detail">Humidity <span>${c.relativehumidity_2m}%</span></div>
+            <div class="weather-detail">Wind <span>${Math.round(c.windspeed_10m)} mph</span></div>
+          </div>`;
+      } catch {}
+    }
+
+    function cycleQuote() {
+      const q = QUOTES[quoteIndex % QUOTES.length];
+      const tEl = document.getElementById('quoteText');
+      const aEl = document.getElementById('quoteAuthor');
+      tEl.classList.add('fading');
+      aEl.classList.add('fading');
+      setTimeout(() => {
+        tEl.textContent = `"${q.t}"`;
+        aEl.textContent = `— ${q.a}`;
+        tEl.classList.remove('fading');
+        aEl.classList.remove('fading');
+        quoteIndex++;
+      }, 1000);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.location) location_str = cfg.location;
+        document.getElementById('locationInput').value = location_str;
+      } catch {}
+      updateClock();
+      fetchWeather();
+      cycleQuote();
+    }
+    async function saveSettings() {
+      location_str = document.getElementById('locationInput').value.trim();
+      document.getElementById('settingsPanel').classList.remove('open');
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ location: location_str }),
+        });
+      } catch {}
+      fetchWeather();
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 1000);
+    setInterval(fetchWeather, 600000);
+    setInterval(cycleQuote, 60000);
+    connectSSE();
+  </script>
+</body>
+</html>

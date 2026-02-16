@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Retro Terminal</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .crt {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Scanlines */
+    .crt::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    /* Screen curvature vignette */
+    .crt::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+      z-index: 11;
+      pointer-events: none;
+    }
+
+    /* Flicker */
+    @keyframes flicker {
+      0%, 100% { opacity: 1; }
+      92% { opacity: 1; }
+      93% { opacity: 0.8; }
+      94% { opacity: 1; }
+      96% { opacity: 0.9; }
+      97% { opacity: 1; }
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      padding: 4vh 4vw;
+      display: flex;
+      flex-direction: column;
+      animation: flicker 8s infinite;
+      position: relative;
+      z-index: 5;
+    }
+
+    .terminal-line {
+      font-family: 'VT323', monospace;
+      font-size: min(2.8vh, 2.2vw);
+      line-height: 1.6;
+      color: var(--text-color);
+      text-shadow: 0 0 5px var(--glow-color), 0 0 15px var(--glow-dim);
+      white-space: pre;
+    }
+
+    .terminal-line.dim { color: var(--dim-color); text-shadow: none; }
+    .terminal-line.bright { color: var(--bright-color); }
+    .terminal-line.header {
+      font-size: min(3.5vh, 2.8vw);
+      margin-bottom: 1vh;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 0.6em;
+      height: 1.1em;
+      background: var(--text-color);
+      animation: blink 1s step-end infinite;
+      vertical-align: text-bottom;
+      margin-left: 2px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .spacer { height: 1.5vh; }
+
+    /* Big clock in center */
+    .big-time {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: min(18vh, 18vw);
+      color: var(--text-color);
+      text-shadow: 0 0 20px var(--glow-color), 0 0 60px var(--glow-dim);
+      text-align: center;
+      margin: auto 0;
+      line-height: 1;
+    }
+    .big-time .seconds {
+      font-size: min(6vh, 6vw);
+      color: var(--dim-color);
+    }
+
+    .bottom-bar {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Color schemes */
+    :root {
+      --text-color: #33ff33;
+      --bright-color: #66ff66;
+      --dim-color: #1a8a1a;
+      --glow-color: rgba(51,255,51,0.4);
+      --glow-dim: rgba(51,255,51,0.1);
+    }
+    body.amber {
+      --text-color: #ffb000;
+      --bright-color: #ffd060;
+      --dim-color: #8a6000;
+      --glow-color: rgba(255,176,0,0.4);
+      --glow-dim: rgba(255,176,0,0.1);
+    }
+    body.blue {
+      --text-color: #00aaff;
+      --bright-color: #66ccff;
+      --dim-color: #005588;
+      --glow-color: rgba(0,170,255,0.4);
+      --glow-dim: rgba(0,170,255,0.1);
+    }
+    body.white {
+      --text-color: #cccccc;
+      --bright-color: #ffffff;
+      --dim-color: #555555;
+      --glow-color: rgba(200,200,200,0.3);
+      --glow-dim: rgba(200,200,200,0.05);
+    }
+
+    .settings-btn {
+      position: fixed; top: 12px; right: 12px;
+      background: none; border: none; color: var(--dim-color);
+      font-size: 20px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 50px; right: 12px;
+      background: rgba(5,5,5,0.95); border: 1px solid var(--dim-color);
+      border-radius: 4px; padding: 16px; display: none;
+      z-index: 100; min-width: 200px; font-family: 'VT323', monospace;
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel label {
+      display: block; color: var(--text-color); font-size: 16px;
+      padding: 4px 0; cursor: pointer;
+    }
+    .settings-panel select {
+      background: #0a0a0a; color: var(--text-color); border: 1px solid var(--dim-color);
+      padding: 4px 8px; font-family: 'VT323', monospace; font-size: 16px;
+      width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: var(--text-color); }
+
+    .reload-indicator {
+      position: fixed; bottom: 6px; left: 6px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #1a1a1a; z-index: 20;
+    }
+    .reload-indicator.connected { background: var(--text-color); }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <label>PHOSPHOR COLOR
+      <select id="colorScheme" onchange="saveSettings()">
+        <option value="green">Green (P1)</option>
+        <option value="amber">Amber (P3)</option>
+        <option value="blue">Blue (P7)</option>
+        <option value="white">White (P4)</option>
+      </select>
+    </label>
+    <label style="margin-top:8px">
+      <input type="checkbox" id="showSysInfo" checked onchange="saveSettings()" />
+      SHOW SYSTEM INFO
+    </label>
+  </div>
+
+  <div class="crt">
+    <div class="screen" id="screen"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'retro';
+    let colorScheme = 'green';
+    let showSysInfo = true;
+
+    const BOOT_MESSAGES = [
+      'BIOS v2.4 (C) 1987 MARWAN SYSTEMS INC.',
+      'MEMORY TEST: 640K OK',
+      '',
+      'DETECTING HARDWARE...',
+      '  CPU: MOS 6502 @ 1 MHz',
+      '  RAM: 640K CONVENTIONAL',
+      '  DISPLAY: CRT 80x25 MONOCHROME',
+      '  CLOCK: RTC BATTERY OK',
+      '',
+      'LOADING TRANSIT OS v3.1...',
+      '████████████████████████████ 100%',
+      '',
+      'SYSTEM READY.',
+      '',
+    ];
+
+    function render() {
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const uptimeH = Math.floor((Date.now() % 86400000) / 3600000);
+      const uptimeM = Math.floor((Date.now() % 3600000) / 60000);
+
+      let html = '';
+
+      if (showSysInfo) {
+        for (const line of BOOT_MESSAGES) {
+          const cls = line.startsWith('  ') ? 'dim' : (line.includes('READY') ? 'bright header' : '');
+          html += `<div class="terminal-line ${cls}">${escHtml(line)}</div>`;
+        }
+      }
+
+      html += `<div class="big-time">${h}:${m}<span class="seconds">:${s}</span></div>`;
+
+      html += '<div class="bottom-bar">';
+      html += `<div class="terminal-line dim">${dateStr}</div>`;
+      if (showSysInfo) {
+        html += `<div class="terminal-line dim">UPTIME: ${uptimeH}h ${uptimeM}m</div>`;
+      }
+      html += '</div>';
+
+      html += '<div class="terminal-line" style="margin-top:1vh">root@display:~$ <span class="cursor"></span></div>';
+
+      document.getElementById('screen').innerHTML = html;
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function applyColor() {
+      document.body.className = colorScheme === 'green' ? '' : colorScheme;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorScheme) colorScheme = cfg.colorScheme;
+        if (cfg.showSysInfo !== undefined) showSysInfo = cfg.showSysInfo;
+        document.getElementById('colorScheme').value = colorScheme;
+        document.getElementById('showSysInfo').checked = showSysInfo;
+      } catch {}
+      applyColor();
+      render();
+    }
+    async function saveSettings() {
+      colorScheme = document.getElementById('colorScheme').value;
+      showSysInfo = document.getElementById('showSysInfo').checked;
+      applyColor();
+      render();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ colorScheme, showSysInfo }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(render, 1000);
+    connectSSE();
+  </script>
+</body>
+</html>

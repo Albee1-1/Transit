@@ -1,0 +1,9 @@
+{
+  "name": "Visualizer",
+  "description": "Animated audio-style bar visualizer with reactive colors",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🎵",
+  "color": "#e040fb",
+  "hasBackend": false
+}

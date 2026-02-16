@@ -1,0 +1,9 @@
+{
+  "name": "Dashboard",
+  "description": "Multi-widget info display with clock, weather, date, and quote",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "📊",
+  "color": "#78909c",
+  "hasBackend": false
+}

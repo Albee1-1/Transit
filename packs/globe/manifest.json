@@ -1,0 +1,9 @@
+{
+  "name": "Globe",
+  "description": "Rotating wireframe earth with glowing grid lines",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌍",
+  "color": "#26c6da",
+  "hasBackend": false
+}

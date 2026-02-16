@@ -1,0 +1,9 @@
+{
+  "name": "Retro Terminal",
+  "description": "CRT monitor aesthetic with scanlines and phosphor glow",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "📺",
+  "color": "#33ff33",
+  "hasBackend": false
+}
