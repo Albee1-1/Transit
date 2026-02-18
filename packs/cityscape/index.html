@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cityscape</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020810; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed; top: 40px; left: 50%; transform: translateX(-50%);
+      text-align: center; pointer-events: none; z-index: 10; transition: opacity 0.5s;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+    .clock-overlay .time {
+      font-family: 'Inter', sans-serif; font-size: 10vw; font-weight: 100;
+      color: rgba(255,255,255,0.06); letter-spacing: 0.08em;
+    }
+    .clock-overlay .date {
+      font-family: 'Inter', sans-serif; font-size: 2vw; font-weight: 200;
+      color: rgba(255,255,255,0.04); margin-top: 1vh; letter-spacing: 0.1em;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #1a2030;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(4,8,16,0.95); border: 1px solid #1a2a3a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #5a4a2a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #aa8844; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #080c14; color: #aa8844; border: 1px solid #2a2a1a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #ffa726; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e1820; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a10; z-index: 20;
+    }
+    .reload-indicator.connected { background: #ffa726; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay hidden" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Time of Day</h3>
+      <label>
+        <select id="timeMode" onchange="saveSettings()">
+          <option value="auto">Auto (Real Time)</option>
+          <option value="sunset">Sunset</option>
+          <option value="night">Night</option>
+          <option value="dawn">Dawn</option>
+          <option value="day">Day</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Weather</h3>
+      <label>
+        <select id="weather" onchange="saveSettings()">
+          <option value="clear" selected>Clear</option>
+          <option value="stars">Starry</option>
+          <option value="fog">Foggy</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" checked onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'cityscape';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let timeMode = 'auto';
+    let weather = 'clear';
+    let showClock = true;
+
+    let buildings = [];
+    let stars = [];
+    let cars = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      initScene();
+    }
+    window.addEventListener('resize', resize);
+
+    function getTimePhase() {
+      if (timeMode !== 'auto') return timeMode;
+      const h = new Date().getHours();
+      if (h >= 5 && h < 7) return 'dawn';
+      if (h >= 7 && h < 17) return 'day';
+      if (h >= 17 && h < 20) return 'sunset';
+      return 'night';
+    }
+
+    const SKY_COLORS = {
+      dawn:   { top: '#0a0820', mid: '#2a1040', low: '#ff6b3d', horizon: '#ffaa44' },
+      day:    { top: '#1a4a7a', mid: '#4a8aba', low: '#8ac4ea', horizon: '#c8e8ff' },
+      sunset: { top: '#0a0820', mid: '#4a1a2a', low: '#ff4500', horizon: '#ff8c00' },
+      night:  { top: '#020510', mid: '#050a18', low: '#0a1028', horizon: '#121830' },
+    };
+
+    function initScene() {
+      initBuildings();
+      initStars();
+      initCars();
+    }
+
+    function initBuildings() {
+      buildings = [];
+      // Far layer
+      for (let i = 0; i < 20; i++) {
+        const w = 30 + Math.random() * 60;
+        buildings.push({
+          layer: 0,
+          x: i * (W / 18) - 20 + Math.random() * 20,
+          w: w,
+          h: H * 0.15 + Math.random() * H * 0.2,
+          windows: Math.floor(w / 12),
+          floors: 0,
+          windowChance: 0.5,
+        });
+      }
+      // Mid layer
+      for (let i = 0; i < 15; i++) {
+        const w = 40 + Math.random() * 80;
+        buildings.push({
+          layer: 1,
+          x: i * (W / 13) - 30 + Math.random() * 30,
+          w: w,
+          h: H * 0.2 + Math.random() * H * 0.25,
+          windows: Math.floor(w / 14),
+          floors: 0,
+          windowChance: 0.6,
+          hasAntenna: Math.random() < 0.3,
+          antennaH: 15 + Math.random() * 30,
+        });
+      }
+      // Front layer (detailed)
+      for (let i = 0; i < 12; i++) {
+        const w = 60 + Math.random() * 100;
+        buildings.push({
+          layer: 2,
+          x: i * (W / 10) - 40 + Math.random() * 40,
+          w: w,
+          h: H * 0.25 + Math.random() * H * 0.3,
+          windows: Math.floor(w / 16),
+          floors: 0,
+          windowChance: 0.65,
+          hasAntenna: Math.random() < 0.4,
+          antennaH: 20 + Math.random() * 40,
+          hasTower: Math.random() < 0.2,
+          towerH: 30 + Math.random() * 50,
+          towerW: 8 + Math.random() * 12,
+        });
+      }
+
+      // Calculate floors
+      for (const b of buildings) {
+        b.floors = Math.floor(b.h / 14);
+        // Pre-generate lit windows
+        b.litWindows = [];
+        for (let f = 0; f < b.floors; f++) {
+          const row = [];
+          for (let w = 0; w < b.windows; w++) {
+            row.push(Math.random() < b.windowChance);
+          }
+          b.litWindows.push(row);
+        }
+      }
+    }
+
+    function initStars() {
+      stars = [];
+      for (let i = 0; i < 150; i++) {
+        stars.push({
+          x: Math.random() * W,
+          y: Math.random() * H * 0.5,
+          r: Math.random() * 1.5,
+          twinkle: Math.random() * Math.PI * 2,
+          speed: 0.5 + Math.random() * 2,
+        });
+      }
+    }
+
+    function initCars() {
+      cars = [];
+      for (let i = 0; i < 8; i++) {
+        cars.push(createCar());
+      }
+    }
+
+    function createCar() {
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      return {
+        x: dir === 1 ? -20 : W + 20,
+        y: H * 0.88 + Math.random() * H * 0.05,
+        speed: 1 + Math.random() * 2,
+        dir: dir,
+        isRed: Math.random() < 0.5, // headlights vs taillights
+        size: 2 + Math.random() * 2,
+      };
+    }
+
+    function drawSky(t) {
+      const phase = getTimePhase();
+      const colors = SKY_COLORS[phase];
+
+      const grad = ctx.createLinearGradient(0, 0, 0, H * 0.7);
+      grad.addColorStop(0, colors.top);
+      grad.addColorStop(0.4, colors.mid);
+      grad.addColorStop(0.8, colors.low);
+      grad.addColorStop(1, colors.horizon);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Stars (only at night/dawn/sunset)
+      if (phase === 'night' || phase === 'dawn' || phase === 'sunset' || weather === 'stars') {
+        const starAlpha = phase === 'night' ? 1 : phase === 'sunset' ? 0.4 : 0.6;
+        for (const s of stars) {
+          const tw = 0.3 + Math.sin(t * s.speed + s.twinkle) * 0.35 + 0.35;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255,255,255,${tw * starAlpha})`;
+          ctx.fill();
+        }
+      }
+
+      // Moon for night
+      if (phase === 'night') {
+        const mx = W * 0.8;
+        const my = H * 0.12;
+        ctx.beginPath();
+        ctx.arc(mx, my, 25, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,250,230,0.08)';
+        ctx.fill();
+        // Moon glow
+        const moonGlow = ctx.createRadialGradient(mx, my, 25, mx, my, 80);
+        moonGlow.addColorStop(0, 'rgba(255,250,230,0.04)');
+        moonGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = moonGlow;
+        ctx.beginPath();
+        ctx.arc(mx, my, 80, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Sun for sunset
+      if (phase === 'sunset') {
+        const sx = W * 0.5;
+        const sy = H * 0.55;
+        const sunGlow = ctx.createRadialGradient(sx, sy, 20, sx, sy, 200);
+        sunGlow.addColorStop(0, 'rgba(255,140,0,0.2)');
+        sunGlow.addColorStop(0.5, 'rgba(255,80,0,0.05)');
+        sunGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = sunGlow;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 200, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawBuildings(t) {
+      const phase = getTimePhase();
+      const isLit = phase === 'night' || phase === 'sunset' || phase === 'dawn';
+
+      const layerColors = {
+        night:  ['#080c14', '#060a10', '#04080c'],
+        sunset: ['#1a1018', '#140c14', '#100810'],
+        dawn:   ['#121020', '#0e0c18', '#0a0812'],
+        day:    ['#4a5a6a', '#3a4a5a', '#2a3a4a'],
+      };
+
+      const lc = layerColors[phase] || layerColors.night;
+
+      for (let layer = 0; layer < 3; layer++) {
+        const layerBuildings = buildings.filter(b => b.layer === layer);
+
+        for (const b of layerBuildings) {
+          const baseY = H * (0.58 + layer * 0.08);
+
+          // Building body
+          ctx.fillStyle = lc[layer];
+          ctx.fillRect(b.x, baseY - b.h, b.w, b.h + H);
+
+          // Antenna
+          if (b.hasAntenna) {
+            ctx.strokeStyle = lc[layer];
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(b.x + b.w / 2, baseY - b.h);
+            ctx.lineTo(b.x + b.w / 2, baseY - b.h - b.antennaH);
+            ctx.stroke();
+            // Blinking light
+            if (isLit && Math.sin(t * 2) > 0.3) {
+              ctx.beginPath();
+              ctx.arc(b.x + b.w / 2, baseY - b.h - b.antennaH, 2, 0, Math.PI * 2);
+              ctx.fillStyle = '#ff0000';
+              ctx.shadowBlur = 6;
+              ctx.shadowColor = '#ff0000';
+              ctx.fill();
+              ctx.shadowBlur = 0;
+            }
+          }
+
+          // Tower
+          if (b.hasTower) {
+            ctx.fillStyle = lc[layer];
+            ctx.fillRect(b.x + b.w / 2 - b.towerW / 2, baseY - b.h - b.towerH, b.towerW, b.towerH);
+          }
+
+          // Windows
+          if (isLit && b.litWindows) {
+            const winW = 4 + layer * 2;
+            const winH = 5 + layer * 2;
+            const gapX = (b.w - 8) / (b.windows || 1);
+            const gapY = b.h / (b.floors || 1);
+
+            for (let f = 0; f < b.floors; f++) {
+              for (let w = 0; w < b.windows; w++) {
+                if (!b.litWindows[f][w]) continue;
+
+                // Occasional flicker
+                if (Math.random() < 0.001) {
+                  b.litWindows[f][w] = !b.litWindows[f][w];
+                  continue;
+                }
+
+                const wx = b.x + 4 + w * gapX;
+                const wy = baseY - b.h + 6 + f * gapY;
+
+                const warmth = Math.random();
+                const color = warmth < 0.6
+                  ? `rgba(255, 230, 150, ${0.3 + layer * 0.1})`
+                  : warmth < 0.85
+                  ? `rgba(200, 220, 255, ${0.2 + layer * 0.1})`
+                  : `rgba(150, 200, 255, ${0.15 + layer * 0.05})`;
+
+                ctx.fillStyle = color;
+                ctx.fillRect(wx, wy, winW, winH);
+
+                // Window glow
+                if (layer === 2) {
+                  ctx.fillStyle = color.replace(/[\d.]+\)/, '0.03)');
+                  ctx.fillRect(wx - 2, wy - 2, winW + 4, winH + 4);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Road
+      ctx.fillStyle = phase === 'day' ? '#2a2a2a' : '#0a0c10';
+      ctx.fillRect(0, H * 0.86, W, H * 0.14);
+
+      // Road line
+      ctx.setLineDash([30, 20]);
+      ctx.strokeStyle = phase === 'day' ? '#4a4a3a' : '#1a1a20';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.9);
+      ctx.lineTo(W, H * 0.9);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawCars(dt) {
+      for (const car of cars) {
+        car.x += car.speed * car.dir * dt * 60;
+
+        // Headlights / taillights
+        const phase = getTimePhase();
+        if (phase === 'night' || phase === 'sunset' || phase === 'dawn') {
+          const lightColor = car.dir === 1 ? 'rgba(255,240,200,0.4)' : 'rgba(255,50,30,0.3)';
+          const glowColor = car.dir === 1 ? 'rgba(255,240,200,0.08)' : 'rgba(255,50,30,0.06)';
+
+          // Light cone
+          if (car.dir === 1) {
+            const grad = ctx.createRadialGradient(car.x + 10, car.y, 0, car.x + 10, car.y, 60);
+            grad.addColorStop(0, glowColor);
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.fillRect(car.x - 40, car.y - 30, 100, 60);
+          }
+
+          ctx.beginPath();
+          ctx.arc(car.x, car.y, car.size, 0, Math.PI * 2);
+          ctx.fillStyle = lightColor;
+          ctx.fill();
+        }
+
+        // Reset when off screen
+        if ((car.dir === 1 && car.x > W + 30) || (car.dir === -1 && car.x < -30)) {
+          Object.assign(car, createCar());
+        }
+      }
+    }
+
+    function drawFog() {
+      if (weather !== 'fog') return;
+      ctx.fillStyle = 'rgba(120,130,140,0.03)';
+      ctx.fillRect(0, 0, W, H);
+
+      const fogGrad = ctx.createLinearGradient(0, H * 0.4, 0, H);
+      fogGrad.addColorStop(0, 'transparent');
+      fogGrad.addColorStop(0.5, 'rgba(100,110,120,0.08)');
+      fogGrad.addColorStop(1, 'rgba(80,90,100,0.12)');
+      ctx.fillStyle = fogGrad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    let lastTime = 0;
+    function animate(ts) {
+      const t = ts * 0.001;
+      const dt = Math.min((ts - lastTime) * 0.001, 0.05);
+      lastTime = ts;
+
+      drawSky(t);
+      drawBuildings(t);
+      drawCars(dt);
+      drawFog();
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.timeMode) timeMode = cfg.timeMode;
+        if (cfg.weather) weather = cfg.weather;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('timeMode').value = timeMode;
+        document.getElementById('weather').value = weather;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      resize();
+      updateClock();
+    }
+
+    async function saveSettings() {
+      timeMode = document.getElementById('timeMode').value;
+      weather = document.getElementById('weather').value;
+      showClock = document.getElementById('showClock').checked;
+      resize();
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeMode, weather, showClock }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 10000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>

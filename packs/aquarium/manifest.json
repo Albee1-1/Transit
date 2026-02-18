@@ -1,0 +1,9 @@
+{
+  "name": "Aquarium",
+  "description": "Underwater fish tank with swimming fish, bubbles, and seaweed",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🐠",
+  "color": "#00bcd4",
+  "hasBackend": false
+}

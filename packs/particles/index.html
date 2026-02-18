@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Particles</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #040208; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1020; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(4,2,8,0.95); border: 1px solid #2a1a4a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #4a2a7a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #8a6acc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #06041a; color: #8a6acc; border: 1px solid #2a1a4a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e081a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #06041a; z-index: 20; }
+    .reload-indicator.connected { background: #7c4dff; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Particle Count</h3>
+      <label><select id="count" onchange="saveSettings()">
+        <option value="60">60</option>
+        <option value="120" selected>120</option>
+        <option value="200">200</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="colorMode" onchange="saveSettings()">
+        <option value="purple">Purple</option>
+        <option value="cyan">Cyan</option>
+        <option value="green">Green</option>
+        <option value="rainbow">Rainbow</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Connection Distance</h3>
+      <label><select id="linkDist" onchange="saveSettings()">
+        <option value="100">Short</option>
+        <option value="160" selected>Medium</option>
+        <option value="240">Long</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'particles';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let count = 120;
+    let colorMode = 'purple';
+    let linkDist = 160;
+
+    const COLOR_MAP = {
+      purple: { r: 124, g: 77, b: 255 },
+      cyan:   { r: 0, g: 229, b: 255 },
+      green:  { r: 0, g: 230, b: 118 },
+    };
+
+    let nodes = [];
+    let attractor = { x: 0, y: 0, angle: 0 };
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; initNodes(); }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initNodes() {
+      const n = parseInt(count);
+      nodes = [];
+      for (let i = 0; i < n; i++) {
+        nodes.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5,
+          hue: Math.random() * 360,
+        });
+      }
+    }
+
+    function getNodeColor(node, alpha) {
+      if (colorMode === 'rainbow') return `hsla(${node.hue}, 70%, 60%, ${alpha})`;
+      const c = COLOR_MAP[colorMode] || COLOR_MAP.purple;
+      return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+    }
+
+    function getLinkColor(alpha) {
+      if (colorMode === 'rainbow') return `rgba(180,150,255,${alpha})`;
+      const c = COLOR_MAP[colorMode] || COLOR_MAP.purple;
+      return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+
+      ctx.fillStyle = 'rgba(4, 2, 8, 0.15)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Roaming attractor
+      attractor.angle += 0.005;
+      attractor.x = W / 2 + Math.sin(attractor.angle) * W * 0.3 + Math.sin(t * 0.7) * 100;
+      attractor.y = H / 2 + Math.cos(attractor.angle * 0.7) * H * 0.3 + Math.cos(t * 0.5) * 80;
+
+      const ld = parseInt(linkDist);
+
+      // Update and draw connections
+      for (let i = 0; i < nodes.length; i++) {
+        const a = nodes[i];
+
+        // Gentle attractor pull
+        const dx = attractor.x - a.x;
+        const dy = attractor.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0 && dist < 400) {
+          const force = 0.02 * (1 - dist / 400);
+          a.vx += (dx / dist) * force;
+          a.vy += (dy / dist) * force;
+        }
+
+        a.x += a.vx;
+        a.y += a.vy;
+
+        // Damping
+        a.vx *= 0.995;
+        a.vy *= 0.995;
+
+        // Bounce
+        if (a.x < 0 || a.x > W) a.vx *= -1;
+        if (a.y < 0 || a.y > H) a.vy *= -1;
+        a.x = Math.max(0, Math.min(W, a.x));
+        a.y = Math.max(0, Math.min(H, a.y));
+
+        // Connections
+        for (let j = i + 1; j < nodes.length; j++) {
+          const b = nodes[j];
+          const cdx = a.x - b.x;
+          const cdy = a.y - b.y;
+          const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (cdist < ld) {
+            const alpha = (1 - cdist / ld) * 0.15;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = getLinkColor(alpha);
+            ctx.lineWidth = (1 - cdist / ld) * 1.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 2, 0, Math.PI * 2);
+        ctx.fillStyle = getNodeColor(n, 0.6);
+        ctx.fill();
+
+        // Glow
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = getNodeColor(n, 0.08);
+        ctx.fill();
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.count) count = cfg.count;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.linkDist) linkDist = cfg.linkDist;
+        document.getElementById('count').value = count;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('linkDist').value = linkDist;
+      } catch {}
+      initNodes();
+    }
+    async function saveSettings() {
+      count = document.getElementById('count').value;
+      colorMode = document.getElementById('colorMode').value;
+      linkDist = document.getElementById('linkDist').value;
+      initNodes();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: parseInt(count), colorMode, linkDist: parseInt(linkDist) }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

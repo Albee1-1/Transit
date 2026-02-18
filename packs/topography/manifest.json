@@ -1,0 +1,9 @@
+{
+  "name": "Topography",
+  "description": "Animated flowing contour map lines",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🗺️",
+  "color": "#26a69a",
+  "hasBackend": false
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Rain",
+  "description": "Realistic rain drops on a window pane",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌧️",
+  "color": "#5b8cbe",
+  "hasBackend": false
+}

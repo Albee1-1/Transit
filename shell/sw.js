@@ -1,4 +1,4 @@
-// Disabled — shell handles display switching
+// No-op service worker — unregisters itself to clean up stale caches
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
   e.waitUntil(

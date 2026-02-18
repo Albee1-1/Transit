@@ -1,0 +1,9 @@
+{
+  "name": "Waves",
+  "description": "Smooth animated gradient waves flowing across the screen",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌊",
+  "color": "#7c4dff",
+  "hasBackend": false
+}

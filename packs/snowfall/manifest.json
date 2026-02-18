@@ -1,0 +1,9 @@
+{
+  "name": "Snowfall",
+  "description": "Peaceful snowflakes drifting over a winter scene",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "❄️",
+  "color": "#b3e5fc",
+  "hasBackend": false
+}

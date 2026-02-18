@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pendulum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #050508; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .clock-overlay {
+      position: fixed; bottom: 30px; right: 30px;
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(255,213,79,0.08); letter-spacing: 0.05em;
+      z-index: 10; display: none;
+    }
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #1a1a10;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(8,8,5,0.95); border: 1px solid #2a2a18;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #6a6a3a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #aaa870; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #0a0a06; color: #aaa870; border: 1px solid #2a2a18; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #ffd54f; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #14140c; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #0a0a06; z-index: 20; }
+    .reload-indicator.connected { background: #ffd54f; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Pendulum Count</h3>
+      <label><select id="count" onchange="saveSettings()">
+        <option value="15">15</option>
+        <option value="24" selected>24</option>
+        <option value="36">36</option>
+        <option value="48">48</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="colorMode" onchange="saveSettings()">
+        <option value="warm">Warm Gold</option>
+        <option value="cool">Cool Blue</option>
+        <option value="rainbow">Rainbow</option>
+        <option value="fire">Fire</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showTrails" checked onchange="saveSettings()" /> Show trails</label>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'pendulum';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let count = 24;
+    let colorMode = 'warm';
+    let showTrails = true;
+    let showClock = false;
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function getColor(i, total) {
+      const f = i / total;
+      switch (colorMode) {
+        case 'cool': return `hsl(${200 + f * 60}, 80%, ${55 + f * 15}%)`;
+        case 'rainbow': return `hsl(${f * 360}, 85%, 60%)`;
+        case 'fire': return `hsl(${f * 40}, 100%, ${50 + f * 20}%)`;
+        default: return `hsl(${40 + f * 20}, ${90 - f * 30}%, ${55 + f * 15}%)`;
+      }
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+
+      if (showTrails) {
+        ctx.fillStyle = 'rgba(5, 5, 8, 0.08)';
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = '#050508';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      const n = parseInt(count);
+      const anchorY = H * 0.08;
+      const maxLen = H * 0.42;
+      const spacing = W / (n + 1);
+
+      for (let i = 0; i < n; i++) {
+        const freq = 0.5 + i * 0.02;
+        const angle = Math.sin(t * freq * Math.PI) * 0.8;
+        const len = maxLen - i * 1.5;
+        const ax = spacing * (i + 1);
+
+        const bx = ax + Math.sin(angle) * len;
+        const by = anchorY + Math.cos(angle) * len;
+
+        const color = getColor(i, n);
+
+        // String
+        ctx.beginPath();
+        ctx.moveTo(ax, anchorY);
+        ctx.lineTo(bx, by);
+        ctx.strokeStyle = color + '30';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Bob glow
+        const grad = ctx.createRadialGradient(bx, by, 0, bx, by, 20);
+        grad.addColorStop(0, color + '50');
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(bx, by, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bob
+        ctx.beginPath();
+        ctx.arc(bx, by, 6, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      el.textContent = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.count) count = cfg.count;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.showTrails !== undefined) showTrails = cfg.showTrails;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('count').value = count;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('showTrails').checked = showTrails;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      updateClock();
+    }
+    async function saveSettings() {
+      count = document.getElementById('count').value;
+      colorMode = document.getElementById('colorMode').value;
+      showTrails = document.getElementById('showTrails').checked;
+      showClock = document.getElementById('showClock').checked;
+      updateClock();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: parseInt(count), colorMode, showTrails, showClock }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+    loadSettings();
+    setInterval(updateClock, 30000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>

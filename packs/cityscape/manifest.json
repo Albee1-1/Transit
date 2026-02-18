@@ -1,0 +1,9 @@
+{
+  "name": "Cityscape",
+  "description": "NYC skyline silhouette with day-night cycle",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🏙️",
+  "color": "#ffa726",
+  "hasBackend": false
+}

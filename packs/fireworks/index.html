@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fireworks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .message-overlay {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; z-index: 2;
+    }
+    .message-overlay .msg {
+      font-family: 'Inter', sans-serif; font-size: 6vw; font-weight: 100;
+      color: rgba(255,255,255,0.12); letter-spacing: 0.05em;
+      text-shadow: 0 0 40px rgba(255,255,255,0.08), 0 0 80px rgba(255,255,255,0.04);
+    }
+    .clock-overlay {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; z-index: 2; transition: opacity 0.5s;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+    .clock-overlay .time {
+      font-family: 'Inter', sans-serif; font-size: 16vw; font-weight: 100;
+      color: rgba(255,255,255,0.1);
+      text-shadow: 0 0 40px rgba(255,255,255,0.06), 0 0 80px rgba(255,255,255,0.03);
+      letter-spacing: 0.05em;
+    }
+    .clock-overlay .date {
+      font-family: 'Inter', sans-serif; font-size: 2.5vw; font-weight: 200;
+      color: rgba(255,255,255,0.06); margin-top: 1vh; letter-spacing: 0.1em;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #333; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,5,15,0.95); border: 1px solid #2a1a3a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 240px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #8855aa; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #aa88cc; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select, .settings-panel input[type="text"] {
+      background: #0a0510; color: #aa88cc; border: 1px solid #2a1a3a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #aa55ff; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a0a2a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #0a0a0a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #aa55ff; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Intensity</h3>
+      <label>
+        <select id="intensity" onchange="saveSettings()">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Color Mode</h3>
+      <label>
+        <select id="colorMode" onchange="saveSettings()">
+          <option value="rainbow">Rainbow</option>
+          <option value="gold">Gold</option>
+          <option value="red-white-blue">Red White Blue</option>
+          <option value="neon">Neon</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Message</h3>
+      <label>
+        <input type="text" id="message" placeholder="Optional overlay text" onchange="saveSettings()" />
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="message-overlay" id="msgOverlay"><div class="msg" id="msgText"></div></div>
+  <div class="clock-overlay hidden" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'fireworks';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let intensity = 'medium';
+    let message = '';
+    let colorMode = 'rainbow';
+    let showClock = false;
+
+    const PALETTES = {
+      rainbow: () => `hsl(${Math.random() * 360}, 100%, ${55 + Math.random() * 20}%)`,
+      gold: () => `hsl(${35 + Math.random() * 25}, 100%, ${50 + Math.random() * 30}%)`,
+      'red-white-blue': () => {
+        const c = [
+          `hsl(${355 + Math.random() * 10}, 100%, ${50 + Math.random() * 20}%)`,
+          `hsl(0, 0%, ${85 + Math.random() * 15}%)`,
+          `hsl(${215 + Math.random() * 15}, 100%, ${50 + Math.random() * 20}%)`
+        ];
+        return c[Math.floor(Math.random() * c.length)];
+      },
+      neon: () => {
+        const hues = [300, 180, 120, 60, 330, 200];
+        return `hsl(${hues[Math.floor(Math.random() * hues.length)] + Math.random() * 20}, 100%, ${55 + Math.random() * 20}%)`;
+      }
+    };
+
+    function getColor() { return (PALETTES[colorMode] || PALETTES.rainbow)(); }
+
+    const LAUNCH_INTERVALS = { low: 2200, medium: 1200, high: 600 };
+    let rockets = [];
+    let particles = [];
+    let lastLaunch = 0;
+
+    class Rocket {
+      constructor() {
+        this.x = Math.random() * W;
+        this.y = H;
+        this.targetY = H * (0.15 + Math.random() * 0.35);
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = -(8 + Math.random() * 4);
+        this.color = getColor();
+        this.trail = [];
+        this.alive = true;
+        this.size = 2.5;
+      }
+      update() {
+        this.trail.push({ x: this.x, y: this.y, alpha: 1 });
+        if (this.trail.length > 18) this.trail.shift();
+        for (const t of this.trail) t.alpha *= 0.88;
+
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.12; // gravity slows ascent
+
+        if (this.vy >= -1 || this.y <= this.targetY) {
+          this.burst();
+          this.alive = false;
+        }
+      }
+      draw() {
+        // Trail
+        for (let i = 0; i < this.trail.length; i++) {
+          const t = this.trail[i];
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, this.size * t.alpha * 0.6, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.globalAlpha = t.alpha * 0.5;
+          ctx.fill();
+        }
+        // Head
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      burst() {
+        const count = 60 + Math.floor(Math.random() * 40);
+        const baseColor = this.color;
+        const type = Math.random();
+        for (let i = 0; i < count; i++) {
+          const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+          const speed = 2 + Math.random() * 5;
+          const c = type < 0.3 ? baseColor : getColor();
+          particles.push(new Particle(
+            this.x, this.y,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed,
+            c
+          ));
+        }
+        // Inner ring for double-burst effect
+        if (Math.random() < 0.4) {
+          const innerCount = 30 + Math.floor(Math.random() * 20);
+          for (let i = 0; i < innerCount; i++) {
+            const angle = (Math.PI * 2 * i) / innerCount;
+            const speed = 1 + Math.random() * 2.5;
+            particles.push(new Particle(
+              this.x, this.y,
+              Math.cos(angle) * speed,
+              Math.sin(angle) * speed,
+              baseColor
+            ));
+          }
+        }
+      }
+    }
+
+    class Particle {
+      constructor(x, y, vx, vy, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.color = color;
+        this.alpha = 1;
+        this.decay = 0.012 + Math.random() * 0.015;
+        this.size = 1.5 + Math.random() * 2;
+        this.gravity = 0.04 + Math.random() * 0.02;
+        this.trail = [];
+      }
+      update() {
+        this.trail.push({ x: this.x, y: this.y, alpha: this.alpha });
+        if (this.trail.length > 6) this.trail.shift();
+
+        this.vx *= 0.985;
+        this.vy *= 0.985;
+        this.vy += this.gravity;
+        this.x += this.vx;
+        this.y += this.vy;
+        this.alpha -= this.decay;
+      }
+      draw() {
+        // Brief trail
+        for (let i = 0; i < this.trail.length; i++) {
+          const t = this.trail[i];
+          const a = (i / this.trail.length) * this.alpha * 0.3;
+          if (a <= 0) continue;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, this.size * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.globalAlpha = a;
+          ctx.fill();
+        }
+        // Main particle
+        if (this.alpha <= 0) return;
+        ctx.globalAlpha = this.alpha;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 12 * this.alpha;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function animate(ts) {
+      // Dim fade for trail effect instead of full clear
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Launch new rockets
+      const interval = LAUNCH_INTERVALS[intensity] || 1200;
+      if (ts - lastLaunch > interval) {
+        rockets.push(new Rocket());
+        // Occasionally launch a pair
+        if (Math.random() < 0.3) {
+          setTimeout(() => rockets.push(new Rocket()), 100 + Math.random() * 200);
+        }
+        lastLaunch = ts;
+      }
+
+      // Update & draw rockets
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        rockets[i].update();
+        rockets[i].draw();
+        if (!rockets[i].alive) rockets.splice(i, 1);
+      }
+
+      // Update & draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        particles[i].draw();
+        if (particles[i].alpha <= 0) particles.splice(i, 1);
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // Message overlay
+    function updateMessage() {
+      const el = document.getElementById('msgText');
+      el.textContent = message || '';
+      document.getElementById('msgOverlay').style.display = message ? 'block' : 'none';
+    }
+
+    // Clock overlay
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.intensity) intensity = cfg.intensity;
+        if (cfg.message !== undefined) message = cfg.message;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('intensity').value = intensity;
+        document.getElementById('message').value = message;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      updateMessage();
+      updateClock();
+    }
+    async function saveSettings() {
+      intensity = document.getElementById('intensity').value;
+      message = document.getElementById('message').value;
+      colorMode = document.getElementById('colorMode').value;
+      showClock = document.getElementById('showClock').checked;
+      updateMessage();
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intensity, message, colorMode, showClock }),
+        });
+      } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 10000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>

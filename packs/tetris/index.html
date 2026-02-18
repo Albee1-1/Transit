@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tetris</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #050510; overflow: hidden; height: 100vh; user-select: none;
+           display: flex; align-items: center; justify-content: center; }
+    canvas { display: block; image-rendering: pixelated; }
+
+    .score-overlay {
+      position: fixed; top: 30px; right: 30px; text-align: right;
+      font-family: 'Inter', sans-serif; z-index: 10;
+    }
+    .score-overlay .label { font-size: 11px; font-weight: 400; color: #334; text-transform: uppercase; letter-spacing: 0.1em; }
+    .score-overlay .value { font-size: 36px; font-weight: 100; color: rgba(255,255,255,0.15); }
+    .score-overlay .lines { font-size: 14px; font-weight: 200; color: rgba(255,255,255,0.08); margin-top: 4px; }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #1a1a2a;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(5,5,16,0.95); border: 1px solid #1a1a3a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #3a3a6a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #6a6aaa; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #08081a; color: #6a6aaa; border: 1px solid #1a1a3a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #00e5ff; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e0e20; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #00e5ff; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="score-overlay" id="scoreOverlay">
+    <div class="label">Score</div>
+    <div class="value" id="scoreValue">0</div>
+    <div class="lines" id="linesValue">0 lines</div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Speed</h3>
+      <label>
+        <select id="gameSpeed" onchange="saveSettings()">
+          <option value="slow">Slow</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Style</h3>
+      <label>
+        <select id="colorStyle" onchange="saveSettings()">
+          <option value="neon">Neon Glow</option>
+          <option value="pastel">Pastel</option>
+          <option value="retro">Retro</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showScore" checked onchange="saveSettings()" /> Show score</label>
+      <label><input type="checkbox" id="showGhost" checked onchange="saveSettings()" /> Show ghost piece</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'tetris';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+
+    let gameSpeed = 'normal';
+    let colorStyle = 'neon';
+    let showScore = true;
+    let showGhost = true;
+
+    const COLS = 10;
+    const ROWS = 20;
+    let CELL;
+    let W, H;
+
+    const SPEED_MAP = { slow: 800, normal: 400, fast: 150 };
+
+    const PIECES = [
+      { shape: [[1,1,1,1]], color: 0 },           // I
+      { shape: [[1,1],[1,1]], color: 1 },           // O
+      { shape: [[0,1,0],[1,1,1]], color: 2 },       // T
+      { shape: [[1,0,0],[1,1,1]], color: 3 },       // L
+      { shape: [[0,0,1],[1,1,1]], color: 4 },       // J
+      { shape: [[0,1,1],[1,1,0]], color: 5 },       // S
+      { shape: [[1,1,0],[0,1,1]], color: 6 },       // Z
+    ];
+
+    const COLOR_SCHEMES = {
+      neon: ['#00e5ff','#ffea00','#e040fb','#ff6d00','#2979ff','#00e676','#ff1744'],
+      pastel: ['#89CFF0','#FFD1DC','#C3B1E1','#FFDAB9','#B5EAD7','#E2F0CB','#FFB7B2'],
+      retro: ['#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff','#ff8800'],
+    };
+
+    let board = [];
+    let current = null;
+    let score = 0;
+    let lines = 0;
+    let lastDrop = 0;
+    let flashRows = [];
+    let flashTimer = 0;
+
+    function resize() {
+      const maxH = window.innerHeight * 0.9;
+      const maxW = window.innerWidth * 0.5;
+      CELL = Math.floor(Math.min(maxH / ROWS, maxW / COLS));
+      W = C.width = COLS * CELL;
+      H = C.height = ROWS * CELL;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initBoard() {
+      board = [];
+      for (let r = 0; r < ROWS; r++) {
+        board.push(new Array(COLS).fill(0));
+      }
+      score = 0;
+      lines = 0;
+      updateScoreDisplay();
+    }
+
+    function spawnPiece() {
+      const p = PIECES[Math.floor(Math.random() * PIECES.length)];
+      current = {
+        shape: p.shape.map(r => [...r]),
+        color: p.color,
+        x: Math.floor((COLS - p.shape[0].length) / 2),
+        y: 0,
+      };
+      if (collides(current.x, current.y, current.shape)) {
+        initBoard();
+        spawnPiece();
+      }
+    }
+
+    function collides(cx, cy, shape) {
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (!shape[r][c]) continue;
+          const nx = cx + c;
+          const ny = cy + r;
+          if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+          if (ny >= 0 && board[ny][nx]) return true;
+        }
+      }
+      return false;
+    }
+
+    function merge() {
+      for (let r = 0; r < current.shape.length; r++) {
+        for (let c = 0; c < current.shape[r].length; c++) {
+          if (!current.shape[r][c]) continue;
+          const ny = current.y + r;
+          const nx = current.x + c;
+          if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
+            board[ny][nx] = current.color + 1;
+          }
+        }
+      }
+    }
+
+    function clearLines() {
+      const cleared = [];
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r].every(c => c !== 0)) {
+          cleared.push(r);
+        }
+      }
+      if (cleared.length) {
+        flashRows = cleared;
+        flashTimer = 300;
+        setTimeout(() => {
+          for (const row of cleared.sort((a, b) => a - b)) {
+            board.splice(row, 1);
+            board.unshift(new Array(COLS).fill(0));
+          }
+          flashRows = [];
+          lines += cleared.length;
+          score += [0, 100, 300, 500, 800][cleared.length] || 0;
+          updateScoreDisplay();
+        }, 300);
+      }
+    }
+
+    function rotate(shape) {
+      const rows = shape.length;
+      const cols = shape[0].length;
+      const rotated = [];
+      for (let c = 0; c < cols; c++) {
+        rotated.push([]);
+        for (let r = rows - 1; r >= 0; r--) {
+          rotated[c].push(shape[r][c]);
+        }
+      }
+      return rotated;
+    }
+
+    function getGhostY() {
+      let gy = current.y;
+      while (!collides(current.x, gy + 1, current.shape)) gy++;
+      return gy;
+    }
+
+    // AI logic - simple greedy
+    function aiMove() {
+      if (!current) return;
+
+      let bestScore = -Infinity;
+      let bestX = current.x;
+      let bestRot = 0;
+
+      const origShape = current.shape;
+
+      for (let rot = 0; rot < 4; rot++) {
+        let testShape = origShape;
+        for (let r = 0; r < rot; r++) testShape = rotate(testShape);
+
+        for (let x = -2; x < COLS; x++) {
+          // Find drop position
+          let ty = 0;
+          if (collides(x, ty, testShape)) continue;
+          while (!collides(x, ty + 1, testShape)) ty++;
+
+          // Evaluate
+          const tempBoard = board.map(r => [...r]);
+          for (let r = 0; r < testShape.length; r++) {
+            for (let c = 0; c < testShape[r].length; c++) {
+              if (!testShape[r][c]) continue;
+              const ny = ty + r;
+              const nx = x + c;
+              if (ny >= 0 && ny < ROWS && nx >= 0 && nx < COLS) {
+                tempBoard[ny][nx] = 1;
+              }
+            }
+          }
+
+          // Score: completed lines + low height + few holes
+          let completedLines = 0;
+          let holes = 0;
+          let maxHeight = 0;
+
+          for (let r = 0; r < ROWS; r++) {
+            if (tempBoard[r].every(c => c !== 0)) completedLines++;
+            for (let c = 0; c < COLS; c++) {
+              if (tempBoard[r][c]) {
+                maxHeight = Math.max(maxHeight, ROWS - r);
+              } else {
+                // Check if there's a block above
+                for (let above = r - 1; above >= 0; above--) {
+                  if (tempBoard[above][c]) { holes++; break; }
+                }
+              }
+            }
+          }
+
+          const evalScore = completedLines * 100 - holes * 30 - maxHeight * 5 + ty * 2;
+          if (evalScore > bestScore) {
+            bestScore = evalScore;
+            bestX = x;
+            bestRot = rot;
+          }
+        }
+      }
+
+      // Apply best rotation
+      for (let r = 0; r < bestRot; r++) {
+        const rotated = rotate(current.shape);
+        if (!collides(current.x, current.y, rotated)) {
+          current.shape = rotated;
+        }
+      }
+
+      // Move toward best X
+      if (current.x < bestX && !collides(current.x + 1, current.y, current.shape)) {
+        current.x++;
+      } else if (current.x > bestX && !collides(current.x - 1, current.y, current.shape)) {
+        current.x--;
+      }
+    }
+
+    function getColor(idx) {
+      const scheme = COLOR_SCHEMES[colorStyle] || COLOR_SCHEMES.neon;
+      return scheme[(idx - 1) % scheme.length];
+    }
+
+    function drawCell(x, y, colorIdx, alpha = 1, ghost = false) {
+      const px = x * CELL;
+      const py = y * CELL;
+      const color = getColor(colorIdx);
+
+      if (ghost) {
+        ctx.strokeStyle = color + '40';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px + 1, py + 1, CELL - 2, CELL - 2);
+        return;
+      }
+
+      ctx.globalAlpha = alpha;
+
+      // Main fill
+      ctx.fillStyle = color;
+      ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+
+      // Inner highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(px + 2, py + 2, CELL - 4, 2);
+      ctx.fillRect(px + 2, py + 2, 2, CELL - 4);
+
+      // Glow
+      if (colorStyle === 'neon') {
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = color;
+        ctx.fillStyle = color + '30';
+        ctx.fillRect(px, py, CELL, CELL);
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    function draw() {
+      // Background
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(0, 0, W, H);
+
+      // Grid lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+      ctx.lineWidth = 0.5;
+      for (let r = 0; r <= ROWS; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, r * CELL);
+        ctx.lineTo(W, r * CELL);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= COLS; c++) {
+        ctx.beginPath();
+        ctx.moveTo(c * CELL, 0);
+        ctx.lineTo(c * CELL, H);
+        ctx.stroke();
+      }
+
+      // Board
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (board[r][c]) {
+            const isFlashing = flashRows.includes(r);
+            drawCell(c, r, board[r][c], isFlashing ? 0.3 + Math.random() * 0.7 : 1);
+          }
+        }
+      }
+
+      // Ghost piece
+      if (current && showGhost) {
+        const gy = getGhostY();
+        for (let r = 0; r < current.shape.length; r++) {
+          for (let c = 0; c < current.shape[r].length; c++) {
+            if (current.shape[r][c]) {
+              drawCell(current.x + c, gy + r, current.color + 1, 1, true);
+            }
+          }
+        }
+      }
+
+      // Current piece
+      if (current) {
+        for (let r = 0; r < current.shape.length; r++) {
+          for (let c = 0; c < current.shape[r].length; c++) {
+            if (current.shape[r][c]) {
+              drawCell(current.x + c, current.y + r, current.color + 1);
+            }
+          }
+        }
+      }
+    }
+
+    function updateScoreDisplay() {
+      document.getElementById('scoreOverlay').style.display = showScore ? 'block' : 'none';
+      document.getElementById('scoreValue').textContent = score.toLocaleString();
+      document.getElementById('linesValue').textContent = `${lines} lines`;
+    }
+
+    let aiTimer = 0;
+    function gameLoop(ts) {
+      const interval = SPEED_MAP[gameSpeed] || 400;
+
+      if (!current) spawnPiece();
+
+      // AI moves (gradual, not instant)
+      if (ts - aiTimer > 80) {
+        aiMove();
+        aiTimer = ts;
+      }
+
+      // Drop
+      if (ts - lastDrop > interval) {
+        if (!collides(current.x, current.y + 1, current.shape)) {
+          current.y++;
+        } else {
+          merge();
+          clearLines();
+          spawnPiece();
+        }
+        lastDrop = ts;
+      }
+
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.gameSpeed) gameSpeed = cfg.gameSpeed;
+        if (cfg.colorStyle) colorStyle = cfg.colorStyle;
+        if (cfg.showScore !== undefined) showScore = cfg.showScore;
+        if (cfg.showGhost !== undefined) showGhost = cfg.showGhost;
+        document.getElementById('gameSpeed').value = gameSpeed;
+        document.getElementById('colorStyle').value = colorStyle;
+        document.getElementById('showScore').checked = showScore;
+        document.getElementById('showGhost').checked = showGhost;
+      } catch {}
+      initBoard();
+      updateScoreDisplay();
+    }
+
+    async function saveSettings() {
+      gameSpeed = document.getElementById('gameSpeed').value;
+      colorStyle = document.getElementById('colorStyle').value;
+      showScore = document.getElementById('showScore').checked;
+      showGhost = document.getElementById('showGhost').checked;
+      updateScoreDisplay();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameSpeed, colorStyle, showScore, showGhost }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    requestAnimationFrame(gameLoop);
+    connectSSE();
+  </script>
+</body>
+</html>

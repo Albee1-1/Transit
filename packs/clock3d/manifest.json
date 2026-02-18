@@ -1,0 +1,9 @@
+{
+  "name": "3D Clock",
+  "description": "Floating 3D time with perspective rotation",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🕛",
+  "color": "#ef5350",
+  "hasBackend": false
+}

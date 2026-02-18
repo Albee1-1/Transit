@@ -1,0 +1,9 @@
+{
+  "name": "Neon Sign",
+  "description": "Flickering neon tube signs in the dark",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "💡",
+  "color": "#ff1744",
+  "hasBackend": false
+}

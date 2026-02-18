@@ -1,0 +1,9 @@
+{
+  "name": "Lava Lamp",
+  "description": "Mesmerizing metaball lava lamp simulation",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🫧",
+  "color": "#ff6b9d",
+  "hasBackend": false
+}

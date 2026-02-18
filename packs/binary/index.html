@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binary Clock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #050508;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .bcd-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3vh;
+    }
+
+    .bcd-grid {
+      display: flex;
+      gap: 2.5vw;
+      align-items: flex-end;
+    }
+
+    .bcd-group {
+      display: flex;
+      gap: 1.2vw;
+      position: relative;
+    }
+
+    .bcd-group:not(:last-child)::after {
+      content: ':';
+      position: absolute;
+      right: -1.8vw;
+      top: 50%;
+      transform: translateY(-60%);
+      font-size: 3vw;
+      font-weight: 200;
+      color: #222;
+      pointer-events: none;
+    }
+
+    .bcd-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.2vh;
+    }
+
+    .bcd-dot {
+      width: clamp(18px, 4vw, 52px);
+      height: clamp(18px, 4vw, 52px);
+      border-radius: 50%;
+      background: #111;
+      border: 1px solid #1a1a1a;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+
+    .bcd-dot.active {
+      border-color: transparent;
+    }
+
+    /* LED color themes */
+    .led-green .bcd-dot.active {
+      background: #39ff14;
+      box-shadow: 0 0 8px #39ff14, 0 0 20px rgba(57, 255, 20, 0.4), 0 0 40px rgba(57, 255, 20, 0.15);
+    }
+    .led-blue .bcd-dot.active {
+      background: #4fc3f7;
+      box-shadow: 0 0 8px #4fc3f7, 0 0 20px rgba(79, 195, 247, 0.4), 0 0 40px rgba(79, 195, 247, 0.15);
+    }
+    .led-amber .bcd-dot.active {
+      background: #ffb74d;
+      box-shadow: 0 0 8px #ffb74d, 0 0 20px rgba(255, 183, 77, 0.4), 0 0 40px rgba(255, 183, 77, 0.15);
+    }
+    .led-red .bcd-dot.active {
+      background: #ff1744;
+      box-shadow: 0 0 8px #ff1744, 0 0 20px rgba(255, 23, 68, 0.4), 0 0 40px rgba(255, 23, 68, 0.15);
+    }
+
+    /* Glow intensities */
+    .glow-low .bcd-dot.active { filter: brightness(0.7); }
+    .glow-medium .bcd-dot.active { filter: brightness(1); }
+    .glow-high .bcd-dot.active { filter: brightness(1.3); }
+
+    .glow-high.led-green .bcd-dot.active {
+      box-shadow: 0 0 12px #39ff14, 0 0 30px rgba(57, 255, 20, 0.5), 0 0 60px rgba(57, 255, 20, 0.25), 0 0 90px rgba(57, 255, 20, 0.1);
+    }
+    .glow-high.led-blue .bcd-dot.active {
+      box-shadow: 0 0 12px #4fc3f7, 0 0 30px rgba(79, 195, 247, 0.5), 0 0 60px rgba(79, 195, 247, 0.25), 0 0 90px rgba(79, 195, 247, 0.1);
+    }
+    .glow-high.led-amber .bcd-dot.active {
+      box-shadow: 0 0 12px #ffb74d, 0 0 30px rgba(255, 183, 77, 0.5), 0 0 60px rgba(255, 183, 77, 0.25), 0 0 90px rgba(255, 183, 77, 0.1);
+    }
+    .glow-high.led-red .bcd-dot.active {
+      box-shadow: 0 0 12px #ff1744, 0 0 30px rgba(255, 23, 68, 0.5), 0 0 60px rgba(255, 23, 68, 0.25), 0 0 90px rgba(255, 23, 68, 0.1);
+    }
+
+    .glow-low.led-green .bcd-dot.active {
+      box-shadow: 0 0 4px #39ff14, 0 0 10px rgba(57, 255, 20, 0.2);
+    }
+    .glow-low.led-blue .bcd-dot.active {
+      box-shadow: 0 0 4px #4fc3f7, 0 0 10px rgba(79, 195, 247, 0.2);
+    }
+    .glow-low.led-amber .bcd-dot.active {
+      box-shadow: 0 0 4px #ffb74d, 0 0 10px rgba(255, 183, 77, 0.2);
+    }
+    .glow-low.led-red .bcd-dot.active {
+      box-shadow: 0 0 4px #ff1744, 0 0 10px rgba(255, 23, 68, 0.2);
+    }
+
+    .bit-label {
+      font-size: clamp(8px, 1.2vw, 14px);
+      color: #2a2a2a;
+      font-weight: 300;
+      margin-top: 0.3vh;
+    }
+
+    .col-label {
+      font-size: clamp(9px, 1.3vw, 15px);
+      color: #333;
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      margin-top: 0.5vh;
+    }
+
+    .decimal-readout {
+      font-family: 'Inter', sans-serif;
+      font-size: clamp(16px, 3.5vw, 40px);
+      font-weight: 200;
+      color: #222;
+      letter-spacing: 0.15em;
+      margin-top: 1vh;
+      transition: opacity 0.3s;
+    }
+    .decimal-readout.hidden { opacity: 0; }
+
+    .seconds-cols { transition: opacity 0.3s, max-width 0.3s; overflow: hidden; }
+    .seconds-cols.hidden { opacity: 0; max-width: 0 !important; gap: 0; }
+
+    /* Settings */
+    .settings-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: none;
+      border: none;
+      color: #222;
+      font-size: 22px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+
+    .settings-panel {
+      position: fixed;
+      top: 60px;
+      right: 16px;
+      background: rgba(15, 15, 15, 0.95);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px;
+      display: none;
+      z-index: 100;
+      min-width: 220px;
+      backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+
+    .settings-panel h3 {
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+
+    .settings-panel label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #999;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    .settings-panel input[type="checkbox"] {
+      accent-color: #4fc3f7;
+      width: 16px;
+      height: 16px;
+    }
+
+    .settings-panel select {
+      background: #111;
+      color: #999;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .setting-group {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body class="led-green glow-medium">
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showSeconds" checked onchange="saveSettings()" /> Show seconds</label>
+      <label><input type="checkbox" id="showDecimal" checked onchange="saveSettings()" /> Show digital time</label>
+    </div>
+    <div class="setting-group">
+      <h3>LED Color</h3>
+      <label>
+        <select id="ledColor" onchange="saveSettings()">
+          <option value="green">Green</option>
+          <option value="blue">Blue</option>
+          <option value="amber">Amber</option>
+          <option value="red">Red</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Glow Intensity</h3>
+      <label>
+        <select id="glowIntensity" onchange="saveSettings()">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <div class="bcd-container">
+    <div class="bcd-grid" id="bcdGrid"></div>
+    <div class="decimal-readout" id="decimalReadout">00:00:00</div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'binary';
+    let showSeconds = true;
+    let showDecimal = true;
+    let ledColor = 'green';
+    let glowIntensity = 'medium';
+
+    const BIT_VALUES = [8, 4, 2, 1];
+    const COL_LABELS = ['H', 'H', 'M', 'M', 'S', 'S'];
+    // Max BCD digit per column: H tens=2, H ones=9, M tens=5, M ones=9, S tens=5, S ones=9
+    const COL_MAX = [2, 9, 5, 9, 5, 9];
+
+    function buildGrid() {
+      const grid = document.getElementById('bcdGrid');
+      grid.innerHTML = '';
+      for (let g = 0; g < 3; g++) {
+        const group = document.createElement('div');
+        group.className = 'bcd-group';
+        if (g === 2) group.classList.add('seconds-cols');
+        for (let c = 0; c < 2; c++) {
+          const colIdx = g * 2 + c;
+          const col = document.createElement('div');
+          col.className = 'bcd-column';
+          for (let r = 0; r < 4; r++) {
+            const dot = document.createElement('div');
+            dot.className = 'bcd-dot';
+            dot.dataset.col = colIdx;
+            dot.dataset.bit = BIT_VALUES[r];
+            // Hide impossible bits (e.g. 8 and 4 for H tens which max=2)
+            if (BIT_VALUES[r] > COL_MAX[colIdx]) {
+              dot.style.visibility = 'hidden';
+            }
+            col.appendChild(dot);
+          }
+          const label = document.createElement('div');
+          label.className = 'col-label';
+          label.textContent = COL_LABELS[colIdx];
+          col.appendChild(label);
+          group.appendChild(col);
+        }
+        grid.appendChild(group);
+      }
+    }
+
+    function updateClock() {
+      const now = new Date();
+      const h = now.getHours();
+      const m = now.getMinutes();
+      const s = now.getSeconds();
+
+      const digits = [
+        Math.floor(h / 10), h % 10,
+        Math.floor(m / 10), m % 10,
+        Math.floor(s / 10), s % 10
+      ];
+
+      const dots = document.querySelectorAll('.bcd-dot');
+      dots.forEach(dot => {
+        const col = parseInt(dot.dataset.col);
+        const bit = parseInt(dot.dataset.bit);
+        if (digits[col] & bit) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+
+      const readout = document.getElementById('decimalReadout');
+      const hStr = String(h).padStart(2, '0');
+      const mStr = String(m).padStart(2, '0');
+      const sStr = String(s).padStart(2, '0');
+      readout.textContent = showSeconds ? `${hStr}:${mStr}:${sStr}` : `${hStr}:${mStr}`;
+    }
+
+    function applySettings() {
+      document.body.className = `led-${ledColor} glow-${glowIntensity}`;
+      document.getElementById('decimalReadout').classList.toggle('hidden', !showDecimal);
+      const secCols = document.querySelector('.seconds-cols');
+      if (secCols) secCols.classList.toggle('hidden', !showSeconds);
+      // Update colon visibility on seconds group
+      const groups = document.querySelectorAll('.bcd-group');
+      if (groups[1]) {
+        groups[1].style.setProperty('--show-colon', showSeconds ? 'block' : 'none');
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.showSeconds !== undefined) showSeconds = cfg.showSeconds;
+        if (cfg.showDecimal !== undefined) showDecimal = cfg.showDecimal;
+        if (cfg.ledColor) ledColor = cfg.ledColor;
+        if (cfg.glowIntensity) glowIntensity = cfg.glowIntensity;
+        document.getElementById('showSeconds').checked = showSeconds;
+        document.getElementById('showDecimal').checked = showDecimal;
+        document.getElementById('ledColor').value = ledColor;
+        document.getElementById('glowIntensity').value = glowIntensity;
+      } catch {}
+      applySettings();
+    }
+
+    async function saveSettings() {
+      showSeconds = document.getElementById('showSeconds').checked;
+      showDecimal = document.getElementById('showDecimal').checked;
+      ledColor = document.getElementById('ledColor').value;
+      glowIntensity = document.getElementById('glowIntensity').value;
+      applySettings();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ showSeconds, showDecimal, ledColor, glowIntensity }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    buildGrid();
+    loadSettings();
+    updateClock();
+    setInterval(updateClock, 1000);
+    connectSSE();
+  </script>
+</body>
+</html>

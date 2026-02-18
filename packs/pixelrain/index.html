@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pixel Rain</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #04060a; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #0a1a2a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(4,6,10,0.95); border: 1px solid #1a2a4a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #2a5a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #5a9acc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #04080e; color: #5a9acc; border: 1px solid #1a2a4a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0c1420; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #04080e; z-index: 20; }
+    .reload-indicator.connected { background: #42a5f5; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Palette</h3>
+      <label><select id="palette" onchange="saveSettings()">
+        <option value="blue">Cool Blue</option>
+        <option value="rainbow">Rainbow</option>
+        <option value="sunset">Sunset</option>
+        <option value="mono">Monochrome</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Pixel Size</h3>
+      <label><select id="pixelSize" onchange="saveSettings()">
+        <option value="4">Small</option>
+        <option value="8" selected>Medium</option>
+        <option value="14">Large</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'pixelrain';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let palette = 'blue';
+    let pixelSize = 8;
+
+    let columns = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      initColumns();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function getColor(f) {
+      switch (palette) {
+        case 'rainbow': return `hsl(${f * 360}, 80%, 55%)`;
+        case 'sunset': return `hsl(${f * 50 + 10}, 90%, ${45 + f * 20}%)`;
+        case 'mono': { const v = 80 + f * 175; return `rgb(${v},${v},${v})`; }
+        default: return `hsl(${200 + f * 40}, 80%, ${40 + f * 30}%)`;
+      }
+    }
+
+    function initColumns() {
+      const ps = parseInt(pixelSize);
+      const numCols = Math.ceil(W / ps);
+      columns = [];
+      for (let i = 0; i < numCols; i++) {
+        columns.push({
+          x: i * ps,
+          drops: [],
+          nextDrop: Math.random() * 60,
+        });
+      }
+    }
+
+    function animate(ts) {
+      const ps = parseInt(pixelSize);
+
+      // Fade
+      ctx.fillStyle = 'rgba(4, 6, 10, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      for (const col of columns) {
+        // Spawn new drops
+        col.nextDrop--;
+        if (col.nextDrop <= 0) {
+          const length = 5 + Math.floor(Math.random() * 15);
+          col.drops.push({
+            y: -length * ps,
+            speed: 2 + Math.random() * 4,
+            length,
+            hue: Math.random(),
+          });
+          col.nextDrop = 10 + Math.random() * 40;
+        }
+
+        // Draw drops
+        for (let i = col.drops.length - 1; i >= 0; i--) {
+          const d = col.drops[i];
+          d.y += d.speed;
+
+          for (let j = 0; j < d.length; j++) {
+            const py = Math.floor((d.y - j * ps) / ps) * ps;
+            if (py < 0 || py >= H) continue;
+            const f = 1 - j / d.length;
+            const color = getColor((d.hue + j * 0.02) % 1);
+            ctx.globalAlpha = f * 0.7;
+            ctx.fillStyle = color;
+            ctx.fillRect(col.x, py, ps - 1, ps - 1);
+
+            // Glow on head
+            if (j === 0) {
+              ctx.globalAlpha = 0.3;
+              ctx.shadowBlur = 8;
+              ctx.shadowColor = color;
+              ctx.fillRect(col.x, py, ps - 1, ps - 1);
+              ctx.shadowBlur = 0;
+            }
+          }
+          ctx.globalAlpha = 1;
+
+          if (d.y - d.length * ps > H) col.drops.splice(i, 1);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.palette) palette = cfg.palette;
+        if (cfg.pixelSize) pixelSize = cfg.pixelSize;
+        document.getElementById('palette').value = palette;
+        document.getElementById('pixelSize').value = pixelSize;
+      } catch {}
+      initColumns();
+    }
+    async function saveSettings() {
+      palette = document.getElementById('palette').value;
+      pixelSize = document.getElementById('pixelSize').value;
+      initColumns();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ palette, pixelSize: parseInt(pixelSize) }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

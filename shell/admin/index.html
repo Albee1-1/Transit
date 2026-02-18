@@ -4,165 +4,499 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Display Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      background: #111;
+      background: #06060a;
       color: #e0e0e0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, sans-serif;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px 20px;
     }
 
-    h1 {
-      font-size: 24px;
-      font-weight: 300;
-      margin-bottom: 8px;
-      color: #fff;
+    /* ── Header ──────────────────────────────── */
+    .header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(6,6,10,0.8);
+      backdrop-filter: blur(24px) saturate(1.5);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding: 14px 32px;
+      display: flex; align-items: center; gap: 20px;
+    }
+    .header-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 17px; font-weight: 600; color: #fff;
+      white-space: nowrap; letter-spacing: -0.01em;
+    }
+    .header-logo .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: linear-gradient(135deg, #818cf8, #c084fc);
+      box-shadow: 0 0 14px #818cf860;
+      animation: dotPulse 3s ease infinite;
+    }
+    .search-box {
+      flex: 1; max-width: 380px; position: relative;
+    }
+    .search-box input {
+      width: 100%; padding: 9px 16px 9px 38px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; color: #e0e0e0;
+      font-size: 13px; font-family: inherit;
+      outline: none; transition: all 0.25s;
+    }
+    .search-box input:focus {
+      border-color: rgba(129,140,248,0.4);
+      background: rgba(255,255,255,0.05);
+      box-shadow: 0 0 0 3px rgba(129,140,248,0.08);
+    }
+    .search-box input::placeholder { color: #444; }
+    .search-box svg {
+      position: absolute; left: 12px; top: 50%;
+      transform: translateY(-50%); opacity: 0.25;
+    }
+    .header-right {
+      display: flex; align-items: center; gap: 12px; margin-left: auto;
+    }
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 14px; border-radius: 20px; font-size: 11px;
+      font-weight: 500; background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+      letter-spacing: 0.01em;
+    }
+    .status-pill .indicator {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #444; transition: all 0.4s;
+    }
+    .status-pill.connected .indicator {
+      background: #34d399; box-shadow: 0 0 10px #34d39960;
+    }
+    .status-pill.connected { color: #34d399; border-color: rgba(52,211,153,0.12); }
+    .btn-icon {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);
+      color: #666; cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      transition: all 0.2s; font-size: 15px;
+    }
+    .btn-icon:hover { background: rgba(255,255,255,0.08); color: #fff; }
+
+    /* ── Toolbar ─────────────────────────────── */
+    .toolbar {
+      padding: 14px 32px;
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .filter-pills {
+      display: flex; gap: 4px;
+    }
+    .filter-pill {
+      padding: 6px 16px; border-radius: 20px; font-size: 12px;
+      font-weight: 500; cursor: pointer; border: none;
+      background: transparent; color: #555;
+      font-family: inherit; transition: all 0.25s;
+      letter-spacing: 0.01em;
+    }
+    .filter-pill:hover { background: rgba(255,255,255,0.05); color: #aaa; }
+    .filter-pill.active {
+      background: linear-gradient(135deg, rgba(129,140,248,0.15), rgba(192,132,252,0.1));
+      color: #c4b5fd;
+      box-shadow: inset 0 0 0 1px rgba(129,140,248,0.2);
+    }
+    .toolbar-right {
+      margin-left: auto; display: flex; align-items: center; gap: 12px;
+    }
+    .sort-select {
+      padding: 6px 12px; border-radius: 10px; font-size: 12px;
+      background: rgba(255,255,255,0.03); color: #666;
+      border: 1px solid rgba(255,255,255,0.05);
+      font-family: inherit; cursor: pointer; outline: none;
+    }
+    .pack-count {
+      font-size: 11px; color: #444; font-weight: 500;
     }
 
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 40px;
-    }
-
+    /* ── Grid ────────────────────────────────── */
+    .content { padding: 24px 32px 120px; }
     .packs-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
-      max-width: 800px;
-      width: 100%;
+      grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+      gap: 14px;
     }
 
+    /* ── Pack Card ────────────────────────────── */
     .pack-card {
-      background: #1a1a1a;
-      border: 2px solid #2a2a2a;
-      border-radius: 12px;
-      padding: 24px;
-      cursor: pointer;
-      transition: all 0.2s;
-      position: relative;
+      background: rgba(255,255,255,0.015);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 16px; padding: 22px;
+      cursor: pointer; position: relative;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      border-left: 3px solid transparent;
+      animation: cardIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
     }
-
     .pack-card:hover {
-      border-color: #444;
-      background: #1e1e1e;
+      background: rgba(255,255,255,0.03);
+      border-color: rgba(255,255,255,0.08);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.03);
     }
-
     .pack-card.active {
-      border-color: #4caf50;
-      background: #1a2e1a;
+      border-left-color: #34d399;
+      background: linear-gradient(135deg, rgba(52,211,153,0.03), rgba(52,211,153,0.01));
+      border-color: rgba(52,211,153,0.12);
     }
-
-    .pack-card .icon {
-      font-size: 36px;
-      margin-bottom: 12px;
+    .pack-card .card-header {
+      display: flex; align-items: flex-start; gap: 14px; margin-bottom: 14px;
     }
-
-    .pack-card .name {
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 4px;
+    .pack-card .icon-wrap {
+      width: 50px; height: 50px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; flex-shrink: 0;
+      background: rgba(255,255,255,0.03);
+      transition: all 0.3s;
+      border: 1px solid rgba(255,255,255,0.03);
     }
-
-    .pack-card .desc {
-      font-size: 13px;
-      color: #888;
-      line-height: 1.4;
+    .pack-card:hover .icon-wrap {
+      box-shadow: 0 0 24px var(--pack-color-dim, rgba(129,140,248,0.2));
+      transform: scale(1.05);
     }
-
+    .pack-card .card-title {
+      font-size: 15px; font-weight: 600; color: #f0f0f0;
+      margin-bottom: 3px; letter-spacing: -0.01em;
+    }
+    .pack-card .card-desc {
+      font-size: 12px; color: #555; line-height: 1.55;
+    }
     .pack-card .badge {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: #4caf50;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 8px;
-      border-radius: 10px;
-      text-transform: uppercase;
+      position: absolute; top: 14px; right: 14px;
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; padding: 3px 10px; border-radius: 6px;
       display: none;
     }
+    .pack-card.active .badge {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(52,211,153,0.12); color: #34d399;
+      animation: pulse 2.5s ease infinite;
+    }
+    .pack-card.active .badge::before {
+      content: ''; width: 5px; height: 5px; border-radius: 50%;
+      background: #34d399; box-shadow: 0 0 6px #34d39980;
+    }
+    .pack-card .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 14px; padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.03);
+    }
+    .pack-card .card-tag {
+      font-size: 10px; color: #4a4a5a; font-weight: 600;
+      padding: 3px 10px; border-radius: 8px;
+      background: rgba(255,255,255,0.025);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .pack-card .card-actions {
+      display: flex; gap: 5px;
+    }
+    .card-action-btn {
+      width: 28px; height: 28px; border-radius: 8px;
+      border: none; background: rgba(255,255,255,0.03);
+      color: #444; cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .card-action-btn:hover { background: rgba(255,255,255,0.1); color: #ddd; }
 
-    .pack-card.active .badge { display: block; }
-
-    .status-bar {
-      margin-top: 32px;
-      padding: 12px 20px;
-      background: #1a1a1a;
-      border-radius: 8px;
-      font-size: 13px;
-      color: #888;
-      max-width: 800px;
-      width: 100%;
-      text-align: center;
+    /* ── Settings Drawer ─────────────────────── */
+    .settings-drawer {
+      display: none; padding: 16px 24px 20px;
+      border-top: 1px solid rgba(255,255,255,0.03);
+      margin-top: 14px; animation: slideDown 0.3s ease;
+    }
+    .settings-drawer.open { display: block; }
+    .settings-drawer h4 {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+      color: #444; margin-bottom: 12px; font-weight: 700;
+    }
+    .settings-drawer .field {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.025);
+    }
+    .settings-drawer .field:last-child { border-bottom: none; }
+    .settings-drawer .field-label {
+      font-size: 12px; color: #888; text-transform: capitalize;
+    }
+    .settings-drawer .field input[type="text"],
+    .settings-drawer .field input[type="number"],
+    .settings-drawer .field input[type="datetime-local"],
+    .settings-drawer .field select {
+      padding: 6px 10px; border-radius: 8px; font-size: 12px;
+      background: rgba(255,255,255,0.03); color: #ccc;
+      border: 1px solid rgba(255,255,255,0.06);
+      font-family: inherit; outline: none; max-width: 180px;
+    }
+    .settings-drawer .field input[type="checkbox"] {
+      accent-color: #818cf8; width: 15px; height: 15px;
+    }
+    .settings-save-btn {
+      margin-top: 12px; padding: 7px 18px; border-radius: 10px;
+      background: linear-gradient(135deg, rgba(129,140,248,0.18), rgba(192,132,252,0.12));
+      color: #c4b5fd;
+      border: 1px solid rgba(129,140,248,0.2);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: all 0.2s;
+      letter-spacing: 0.01em;
+    }
+    .settings-save-btn:hover {
+      background: linear-gradient(135deg, rgba(129,140,248,0.28), rgba(192,132,252,0.2));
+      box-shadow: 0 4px 16px rgba(129,140,248,0.15);
     }
 
-    .status-bar .ok { color: #4caf50; }
-    .status-bar .err { color: #f44336; }
-
-    .loading {
-      color: #666;
-      font-size: 14px;
+    /* ── Bottom Bar ──────────────────────────── */
+    .bottom-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(6,6,10,0.85); backdrop-filter: blur(24px) saturate(1.5);
+      border-top: 1px solid rgba(255,255,255,0.04);
+      padding: 10px 32px;
+      display: flex; align-items: center; gap: 20px;
+      font-size: 11px; color: #444; z-index: 50;
     }
+    .bottom-bar .quick-btn {
+      padding: 6px 14px; border-radius: 10px; font-size: 11px;
+      background: rgba(255,255,255,0.03); color: #777;
+      border: 1px solid rgba(255,255,255,0.05);
+      cursor: pointer; font-family: inherit;
+      transition: all 0.25s; text-decoration: none;
+      font-weight: 500; letter-spacing: 0.01em;
+    }
+    .bottom-bar .quick-btn:hover {
+      background: linear-gradient(135deg, rgba(129,140,248,0.12), rgba(192,132,252,0.08));
+      color: #c4b5fd; border-color: rgba(129,140,248,0.2);
+    }
+    .bottom-spacer { margin-left: auto; }
+
+    /* ── Toast ────────────────────────────────── */
+    .toast-container {
+      position: fixed; top: 76px; right: 32px; z-index: 200;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      padding: 10px 18px; border-radius: 12px; font-size: 12px;
+      font-weight: 500; animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+      backdrop-filter: blur(20px);
+    }
+    .toast.success {
+      background: rgba(52,211,153,0.1); color: #34d399;
+      border: 1px solid rgba(52,211,153,0.15);
+    }
+    .toast.error {
+      background: rgba(248,113,113,0.1); color: #f87171;
+      border: 1px solid rgba(248,113,113,0.15);
+    }
+
+    /* ── Empty state ─────────────────────────── */
+    .empty-state {
+      grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+      color: #333; font-size: 13px;
+    }
+
+    /* ── Animations ───────────────────────────── */
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 14px #818cf860; }
+      50% { box-shadow: 0 0 20px #818cf8a0, 0 0 40px #818cf830; }
+    }
+    @keyframes slideDown {
+      from { opacity: 0; max-height: 0; }
+      to { opacity: 1; max-height: 400px; }
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(20px) scale(0.95); }
+      to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+    @keyframes toastOut {
+      from { opacity: 1; }
+      to { opacity: 0; transform: translateY(-10px); }
+    }
+
+    .loading-text { color: #333; font-size: 13px; padding: 60px; text-align: center; grid-column: 1 / -1; }
+
+    /* ── Scrollbar ────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
   </style>
 </head>
 <body>
-  <h1>Display Shell</h1>
-  <p class="subtitle">Select a pack to display</p>
 
-  <div class="packs-grid" id="packsGrid">
-    <div class="loading">Loading packs...</div>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-logo">
+      <span class="dot"></span> NYC Display Shell
+    </div>
+    <div class="search-box">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="searchInput" placeholder="Search packs..." oninput="applyFilters()" />
+    </div>
+    <div class="header-right">
+      <div class="status-pill" id="statusPill">
+        <span class="indicator"></span>
+        <span id="statusText">Connecting</span>
+      </div>
+    </div>
   </div>
 
-  <div class="status-bar" id="statusBar">Connecting...</div>
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="filter-pills" id="filterPills">
+      <button class="filter-pill active" data-cat="all" onclick="setCategory('all',this)">All</button>
+      <button class="filter-pill" data-cat="visual" onclick="setCategory('visual',this)">Visual</button>
+      <button class="filter-pill" data-cat="clocks" onclick="setCategory('clocks',this)">Clocks</button>
+      <button class="filter-pill" data-cat="utility" onclick="setCategory('utility',this)">Utility</button>
+      <button class="filter-pill" data-cat="fun" onclick="setCategory('fun',this)">Fun</button>
+    </div>
+    <div class="toolbar-right">
+      <select class="sort-select" id="sortSelect" onchange="applyFilters()">
+        <option value="alpha">A &rarr; Z</option>
+        <option value="active">Active first</option>
+      </select>
+      <span class="pack-count" id="packCount"></span>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="content">
+    <div class="packs-grid" id="packsGrid">
+      <div class="loading-text">Loading packs...</div>
+    </div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottom-bar">
+    <span id="activeLabel">Active: &mdash;</span>
+    <span class="bottom-spacer"></span>
+    <button class="quick-btn" onclick="refreshDisplay()">Refresh Display</button>
+    <a class="quick-btn" href="/" target="_blank">Open Display</a>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
 
   <script>
-    let activePack = '';
+    const CATEGORIES = {
+      visual: ['ambient','globe','visualizer','waves','matrix','space','fireworks','aurora','lavalamp','kaleidoscope','starfield','plasma','spiral','dna','lightning','topography','pixelrain','ripple','synthwave','particles'],
+      clocks: ['clock','wordclock','binary','countdown','pendulum','clock3d'],
+      utility: ['dashboard','weather','stocks','pomodoro','transit','cityscape','orbit','gameoflife'],
+      fun: ['zen','retro','noise','aquarium','photos','tetris','rain','fireplace','snowfall','neonsign','typewriter'],
+    };
 
-    async function loadPacks() {
+    let allPacks = [];
+    let activePack = '';
+    let currentCategory = 'all';
+    let openSettingsId = null;
+
+    // ── Init ──────────────────────────────────
+    async function init() {
       try {
         const [packsRes, activeRes] = await Promise.all([
           fetch('/api/packs'),
           fetch('/api/activePack'),
         ]);
-        const packs = await packsRes.json();
+        allPacks = await packsRes.json();
         const active = await activeRes.json();
         activePack = active.activePackId;
-        renderPacks(packs);
-        updateStatus(`Active: ${activePack}`);
+        applyFilters();
+        document.getElementById('activeLabel').textContent = `Active: ${activePack}`;
       } catch (err) {
-        updateStatus(`Error loading packs: ${err.message}`, true);
+        toast(`Failed to load: ${err.message}`, 'error');
       }
+      connectSSE();
+    }
+
+    // ── Rendering ─────────────────────────────
+    function applyFilters() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const sort = document.getElementById('sortSelect').value;
+
+      let filtered = allPacks.filter(p => {
+        const matchSearch = !query ||
+          (p.name || p.id).toLowerCase().includes(query) ||
+          (p.description || '').toLowerCase().includes(query);
+        const matchCat = currentCategory === 'all' ||
+          (CATEGORIES[currentCategory] || []).includes(p.id);
+        return matchSearch && matchCat;
+      });
+
+      if (sort === 'alpha') {
+        filtered.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+      } else if (sort === 'active') {
+        filtered.sort((a, b) => (b.id === activePack ? 1 : 0) - (a.id === activePack ? 1 : 0));
+      }
+
+      renderPacks(filtered);
+      document.getElementById('packCount').textContent = `${filtered.length} of ${allPacks.length} packs`;
+    }
+
+    function getCategory(packId) {
+      for (const [cat, ids] of Object.entries(CATEGORIES)) {
+        if (ids.includes(packId)) return cat;
+      }
+      return 'other';
     }
 
     function renderPacks(packs) {
       const grid = document.getElementById('packsGrid');
+      if (!packs.length) {
+        grid.innerHTML = '<div class="empty-state">No packs match your search</div>';
+        return;
+      }
       grid.innerHTML = '';
-      for (const pack of packs) {
+      packs.forEach((pack, i) => {
         const card = document.createElement('div');
         card.className = 'pack-card' + (pack.id === activePack ? ' active' : '');
+        card.style.setProperty('--pack-color-dim', (pack.color || '#6366f1') + '40');
+        card.style.animationDelay = `${i * 0.04}s`;
+        const cat = getCategory(pack.id);
         card.innerHTML = `
           <div class="badge">Active</div>
-          <div class="icon">${pack.icon || ''}</div>
-          <div class="name">${pack.name || pack.id}</div>
-          <div class="desc">${pack.description || ''}</div>
+          <div class="card-header">
+            <div class="icon-wrap" style="background:${pack.color || '#6366f1'}15">${pack.icon || ''}</div>
+            <div>
+              <div class="card-title">${pack.name || pack.id}</div>
+              <div class="card-desc">${pack.description || ''}</div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <span class="card-tag">${cat}</span>
+            <div class="card-actions">
+              <button class="card-action-btn" onclick="event.stopPropagation();togglePackSettings('${pack.id}',this)" title="Settings">&#9881;</button>
+            </div>
+          </div>
+          <div class="settings-drawer" id="settings-${pack.id}"></div>
         `;
-        card.addEventListener('click', () => switchPack(pack.id));
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.card-action-btn') || e.target.closest('.settings-drawer')) return;
+          switchPack(pack.id);
+        });
         grid.appendChild(card);
-      }
+      });
     }
 
+    // ── Pack Switching ────────────────────────
     async function switchPack(packId) {
       if (packId === activePack) return;
       try {
-        updateStatus(`Switching to ${packId}...`);
         const res = await fetch('/api/activePack', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -171,24 +505,144 @@
         const data = await res.json();
         if (res.ok) {
           activePack = data.activePackId;
-          loadPacks();
-          updateStatus(`Switched to ${activePack}`);
+          applyFilters();
+          document.getElementById('activeLabel').textContent = `Active: ${activePack}`;
+          toast(`Switched to ${activePack}`);
         } else {
-          updateStatus(`Error: ${data.error}`, true);
+          toast(data.error || 'Switch failed', 'error');
         }
       } catch (err) {
-        updateStatus(`Error: ${err.message}`, true);
+        toast(err.message, 'error');
       }
     }
 
-    function updateStatus(msg, isError) {
-      const bar = document.getElementById('statusBar');
-      bar.innerHTML = isError
-        ? `<span class="err">${msg}</span>`
-        : `<span class="ok">${msg}</span>`;
+    async function refreshDisplay() {
+      try {
+        await fetch('/api/activePack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ packId: activePack }),
+        });
+        toast('Display refreshed');
+      } catch { toast('Refresh failed', 'error'); }
     }
 
-    loadPacks();
+    // ── Per-Pack Settings ─────────────────────
+    async function togglePackSettings(packId, btn) {
+      const drawer = document.getElementById(`settings-${packId}`);
+      if (!drawer) return;
+      if (openSettingsId === packId) {
+        drawer.classList.remove('open');
+        drawer.innerHTML = '';
+        openSettingsId = null;
+        return;
+      }
+      // Close previous
+      if (openSettingsId) {
+        const prev = document.getElementById(`settings-${openSettingsId}`);
+        if (prev) { prev.classList.remove('open'); prev.innerHTML = ''; }
+      }
+      openSettingsId = packId;
+      try {
+        const res = await fetch(`/api/config/${packId}`);
+        const cfg = await res.json();
+        renderSettingsDrawer(drawer, packId, cfg);
+        drawer.classList.add('open');
+      } catch {
+        drawer.innerHTML = '<p style="color:#555;font-size:13px;padding:8px 0">No settings available</p>';
+        drawer.classList.add('open');
+      }
+    }
+
+    function renderSettingsDrawer(drawer, packId, cfg) {
+      const keys = Object.keys(cfg);
+      if (!keys.length) {
+        drawer.innerHTML = '<p style="color:#555;font-size:13px;padding:8px 0">No settings configured yet</p>';
+        return;
+      }
+      let html = '<h4>Pack Settings</h4>';
+      for (const key of keys) {
+        const val = cfg[key];
+        const type = typeof val;
+        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+        html += '<div class="field">';
+        html += `<span class="field-label">${label}</span>`;
+        if (type === 'boolean') {
+          html += `<input type="checkbox" data-key="${key}" ${val ? 'checked' : ''} />`;
+        } else if (type === 'number') {
+          html += `<input type="number" data-key="${key}" value="${val}" />`;
+        } else {
+          html += `<input type="text" data-key="${key}" value="${String(val)}" />`;
+        }
+        html += '</div>';
+      }
+      html += `<button class="settings-save-btn" onclick="savePackSettings('${packId}')">Save</button>`;
+      drawer.innerHTML = html;
+    }
+
+    async function savePackSettings(packId) {
+      const drawer = document.getElementById(`settings-${packId}`);
+      if (!drawer) return;
+      const inputs = drawer.querySelectorAll('[data-key]');
+      const cfg = {};
+      inputs.forEach(el => {
+        const key = el.dataset.key;
+        if (el.type === 'checkbox') cfg[key] = el.checked;
+        else if (el.type === 'number') cfg[key] = Number(el.value);
+        else cfg[key] = el.value;
+      });
+      try {
+        await fetch(`/api/config/${packId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cfg),
+        });
+        toast(`${packId} settings saved`);
+      } catch { toast('Save failed', 'error'); }
+    }
+
+    // ── Category Filter ───────────────────────
+    function setCategory(cat, btn) {
+      currentCategory = cat;
+      document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilters();
+    }
+
+    // ── SSE ───────────────────────────────────
+    function connectSSE() {
+      const pill = document.getElementById('statusPill');
+      const text = document.getElementById('statusText');
+      const es = new EventSource('/api/events');
+      es.onopen = () => {
+        pill.classList.add('connected');
+        text.textContent = 'Connected';
+      };
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        activePack = d.activePackId;
+        applyFilters();
+        document.getElementById('activeLabel').textContent = `Active: ${activePack}`;
+      });
+      es.onerror = () => {
+        pill.classList.remove('connected');
+        text.textContent = 'Reconnecting';
+        es.close();
+        setTimeout(connectSSE, 5000);
+      };
+    }
+
+    // ── Toast ─────────────────────────────────
+    function toast(msg, type = 'success') {
+      const c = document.getElementById('toastContainer');
+      const t = document.createElement('div');
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      c.appendChild(t);
+      setTimeout(() => t.remove(), 3200);
+    }
+
+    init();
   </script>
 </body>
 </html>

@@ -1,0 +1,9 @@
+{
+  "name": "DNA Helix",
+  "description": "Rotating double helix with particle bonds",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🧬",
+  "color": "#26c6da",
+  "hasBackend": false
+}

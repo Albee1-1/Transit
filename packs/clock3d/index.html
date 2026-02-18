@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Clock</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #050505; overflow: hidden; height: 100vh; user-select: none;
+           display: flex; align-items: center; justify-content: center; perspective: 800px; }
+
+    .time-container {
+      transform-style: preserve-3d;
+      animation: floatRotate 20s ease-in-out infinite;
+    }
+
+    .time-display {
+      font-family: 'Inter', sans-serif; font-weight: 200;
+      font-size: 18vw; letter-spacing: -0.02em;
+      color: var(--clock-color, #ef5350);
+      text-shadow:
+        0 0 20px var(--clock-glow, rgba(239,83,80,0.3)),
+        0 0 60px var(--clock-glow, rgba(239,83,80,0.15)),
+        0 0 100px var(--clock-glow, rgba(239,83,80,0.05));
+      transform-style: preserve-3d;
+    }
+
+    .time-display .colon {
+      animation: colonBlink 1s ease infinite;
+      display: inline-block;
+    }
+
+    .date-display {
+      font-family: 'Inter', sans-serif; font-weight: 300; font-size: 2.5vw;
+      color: var(--clock-dim, rgba(239,83,80,0.15));
+      text-align: center; margin-top: 2vh;
+      letter-spacing: 0.2em; text-transform: uppercase;
+    }
+
+    .seconds-display {
+      font-family: 'Inter', sans-serif; font-weight: 100; font-size: 6vw;
+      color: var(--clock-dim, rgba(239,83,80,0.08));
+      text-align: center; margin-top: 1vh;
+    }
+
+    @keyframes floatRotate {
+      0%, 100% { transform: rotateX(5deg) rotateY(-5deg) translateZ(0); }
+      25% { transform: rotateX(-3deg) rotateY(8deg) translateZ(20px); }
+      50% { transform: rotateX(4deg) rotateY(5deg) translateZ(-10px); }
+      75% { transform: rotateX(-5deg) rotateY(-8deg) translateZ(15px); }
+    }
+
+    @keyframes colonBlink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0.3; }
+    }
+
+    /* Ambient particles */
+    .particle-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; }
+    .particle {
+      position: absolute; border-radius: 50%;
+      background: var(--clock-color, #ef5350);
+      opacity: 0.03;
+      animation: particleFloat linear infinite;
+    }
+    @keyframes particleFloat {
+      0% { transform: translateY(100vh) scale(0); opacity: 0; }
+      50% { opacity: 0.04; }
+      100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+    }
+
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1a1a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(8,5,5,0.95); border: 1px solid #2a1a1a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #6a3a3a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #cc6666; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #0a0606; color: #cc6666; border: 1px solid #2a1a1a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #ef5350; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a0e0e; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #0a0606; z-index: 20; }
+    .reload-indicator.connected { background: #ef5350; }
+  </style>
+</head>
+<body>
+  <div class="particle-layer" id="particles"></div>
+  <div class="time-container">
+    <div class="time-display" id="timeDisplay"></div>
+    <div class="date-display" id="dateDisplay"></div>
+    <div class="seconds-display" id="secondsDisplay"></div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="clockColor" onchange="saveSettings()">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="cyan">Cyan</option>
+        <option value="amber">Amber</option>
+        <option value="white">White</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Format</h3>
+      <label><select id="format" onchange="saveSettings()">
+        <option value="12">12 Hour</option>
+        <option value="24">24 Hour</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showSeconds" checked onchange="saveSettings()" /> Show seconds</label>
+      <label><input type="checkbox" id="showDate" checked onchange="saveSettings()" /> Show date</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'clock3d';
+
+    let clockColor = 'red';
+    let format = '12';
+    let showSeconds = true;
+    let showDate = true;
+
+    const COLOR_MAP = {
+      red:   { color: '#ef5350', glow: 'rgba(239,83,80,0.3)', dim: 'rgba(239,83,80,0.12)' },
+      blue:  { color: '#42a5f5', glow: 'rgba(66,165,245,0.3)', dim: 'rgba(66,165,245,0.12)' },
+      cyan:  { color: '#26c6da', glow: 'rgba(38,198,218,0.3)', dim: 'rgba(38,198,218,0.12)' },
+      amber: { color: '#ffca28', glow: 'rgba(255,202,40,0.3)', dim: 'rgba(255,202,40,0.12)' },
+      white: { color: '#e0e0e0', glow: 'rgba(224,224,224,0.2)', dim: 'rgba(224,224,224,0.08)' },
+    };
+
+    function applyColor() {
+      const c = COLOR_MAP[clockColor] || COLOR_MAP.red;
+      document.documentElement.style.setProperty('--clock-color', c.color);
+      document.documentElement.style.setProperty('--clock-glow', c.glow);
+      document.documentElement.style.setProperty('--clock-dim', c.dim);
+    }
+
+    function initParticles() {
+      const container = document.getElementById('particles');
+      container.innerHTML = '';
+      for (let i = 0; i < 20; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = 3 + Math.random() * 8;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDuration = (8 + Math.random() * 15) + 's';
+        p.style.animationDelay = Math.random() * -20 + 's';
+        container.appendChild(p);
+      }
+    }
+
+    function updateTime() {
+      const now = new Date();
+      let h = now.getHours();
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+
+      if (format === '12') h = h % 12 || 12;
+      const hStr = String(h).padStart(2, '0');
+
+      document.getElementById('timeDisplay').innerHTML = `${hStr}<span class="colon">:</span>${m}`;
+      document.getElementById('secondsDisplay').style.display = showSeconds ? 'block' : 'none';
+      document.getElementById('secondsDisplay').textContent = s;
+      document.getElementById('dateDisplay').style.display = showDate ? 'block' : 'none';
+      document.getElementById('dateDisplay').textContent = now.toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.clockColor) clockColor = cfg.clockColor;
+        if (cfg.format) format = cfg.format;
+        if (cfg.showSeconds !== undefined) showSeconds = cfg.showSeconds;
+        if (cfg.showDate !== undefined) showDate = cfg.showDate;
+        document.getElementById('clockColor').value = clockColor;
+        document.getElementById('format').value = format;
+        document.getElementById('showSeconds').checked = showSeconds;
+        document.getElementById('showDate').checked = showDate;
+      } catch {}
+      applyColor(); initParticles(); updateTime();
+    }
+    async function saveSettings() {
+      clockColor = document.getElementById('clockColor').value;
+      format = document.getElementById('format').value;
+      showSeconds = document.getElementById('showSeconds').checked;
+      showDate = document.getElementById('showDate').checked;
+      applyColor(); initParticles(); updateTime();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clockColor, format, showSeconds, showDate }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); setInterval(updateTime, 200); connectSSE();
+  </script>
+</body>
+</html>

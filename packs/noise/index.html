@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    #canvas {
+      display: block; width: 100vw; height: 100vh; image-rendering: pixelated;
+    }
+    #canvas.crt {
+      border-radius: 8% / 6%;
+      box-shadow: inset 0 0 80px rgba(0,0,0,0.6), 0 0 40px rgba(100,100,100,0.1);
+    }
+    .scanlines {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px);
+      pointer-events: none; z-index: 3;
+    }
+    .vhs-timestamp {
+      position: fixed; bottom: 40px; right: 40px;
+      font-family: 'Courier New', monospace; font-size: 22px; font-weight: bold;
+      color: #fff; text-shadow: 2px 0 #f00, -2px 0 #0ff;
+      z-index: 5; pointer-events: none; letter-spacing: 2px;
+      padding: 4px 10px; background: rgba(0,0,0,0.3);
+    }
+    .vhs-timestamp.hidden { display: none; }
+    .clock-overlay {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; z-index: 5; transition: opacity 0.5s;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+    .clock-overlay .time {
+      font-family: 'Inter', sans-serif; font-size: 16vw; font-weight: 100;
+      color: rgba(255,255,255,0.15);
+      text-shadow: 0 0 40px rgba(255,255,255,0.1), 0 0 80px rgba(255,255,255,0.05);
+    }
+    .clock-overlay .date {
+      font-family: 'Inter', sans-serif; font-size: 2.5vw; font-weight: 200;
+      color: rgba(255,255,255,0.08); margin-top: 1vh; letter-spacing: 0.1em;
+    }
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #555; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(20,20,20,0.95); border: 1px solid #444;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #888; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #ccc; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #111; color: #ccc; border: 1px solid #444;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #888; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #222; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #222; z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Mode</h3>
+      <label>
+        <select id="mode" onchange="saveSettings()">
+          <option value="static">Static</option>
+          <option value="color-bars">Color Bars</option>
+          <option value="channel-surf">Channel Surf</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Effects</h3>
+      <label><input type="checkbox" id="showTimestamp" checked onchange="saveSettings()" /> VHS timestamp</label>
+      <label><input type="checkbox" id="crtCurve" checked onchange="saveSettings()" /> CRT curvature</label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+  <div class="scanlines"></div>
+  <div class="vhs-timestamp" id="vhsTimestamp"></div>
+  <div class="clock-overlay hidden" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+    <div class="date" id="clockDate"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'noise';
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let W, H, imageData, pixels;
+
+    let settings = {
+      mode: 'static',
+      showTimestamp: true,
+      crtCurve: true,
+      showClock: false
+    };
+
+    // Channel surf state
+    let surfState = 'static';
+    let surfTimer = 0;
+    let surfInterval = 800;
+    let trackingY = -20;
+    let trackingActive = false;
+    let trackingSpeed = 0;
+    let flashFrame = 0;
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      imageData = ctx.createImageData(W, H);
+      pixels = imageData.data;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Static noise ---
+    function drawStatic() {
+      for (let i = 0, len = pixels.length; i < len; i += 4) {
+        const v = Math.random() * 255 | 0;
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = v;
+        pixels[i + 3] = 255;
+      }
+      // Occasional bright horizontal flash (crackling visual)
+      if (Math.random() < 0.03) {
+        flashFrame = 2 + (Math.random() * 3 | 0);
+      }
+      if (flashFrame > 0) {
+        const fy = (Math.random() * H | 0);
+        const fh = 1 + (Math.random() * 4 | 0);
+        for (let y = fy; y < Math.min(fy + fh, H); y++) {
+          const rowStart = y * W * 4;
+          for (let x = 0; x < W; x++) {
+            const idx = rowStart + x * 4;
+            pixels[idx] = pixels[idx + 1] = pixels[idx + 2] = 200 + (Math.random() * 55 | 0);
+          }
+        }
+        flashFrame--;
+      }
+      // Tracking lines
+      if (!trackingActive && Math.random() < 0.005) {
+        trackingActive = true;
+        trackingY = -10;
+        trackingSpeed = 2 + Math.random() * 4;
+      }
+      if (trackingActive) {
+        const bandH = 8 + (Math.random() * 12 | 0);
+        for (let y = Math.max(0, trackingY | 0); y < Math.min(H, (trackingY + bandH) | 0); y++) {
+          const rowStart = y * W * 4;
+          const shift = (Math.random() * 40 - 20) | 0;
+          for (let x = 0; x < W; x++) {
+            const idx = rowStart + x * 4;
+            pixels[idx] = pixels[idx + 1] = pixels[idx + 2] = 20 + (Math.random() * 60 | 0);
+          }
+        }
+        trackingY += trackingSpeed;
+        if (trackingY > H + 20) trackingActive = false;
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // --- Color Bars (SMPTE pattern) ---
+    const SMPTE_COLORS = [
+      [192, 192, 192], [192, 192, 0], [0, 192, 192], [0, 192, 0],
+      [192, 0, 192], [192, 0, 0], [0, 0, 192]
+    ];
+    const SMPTE_BOT = [
+      [0, 33, 76], [255, 255, 255], [50, 0, 106], [0, 0, 0],
+      [0, 0, 0], [0, 0, 0], [0, 0, 0]
+    ];
+
+    function drawColorBars() {
+      const barW = W / 7;
+      const topH = H * 0.67;
+      const midH = H * 0.08;
+      // Top bars
+      for (let i = 0; i < 7; i++) {
+        const x0 = (i * barW) | 0;
+        const x1 = ((i + 1) * barW) | 0;
+        const [r, g, b] = SMPTE_COLORS[i];
+        for (let y = 0; y < topH; y++) {
+          const row = y * W * 4;
+          for (let x = x0; x < x1 && x < W; x++) {
+            const idx = row + x * 4;
+            pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
+          }
+        }
+      }
+      // Mid section (reverse narrower bars)
+      const midColors = [[0, 0, 192], [19, 19, 19], [192, 0, 192], [19, 19, 19],
+                          [0, 192, 192], [19, 19, 19], [192, 192, 192]];
+      for (let i = 0; i < 7; i++) {
+        const x0 = (i * barW) | 0;
+        const x1 = ((i + 1) * barW) | 0;
+        const [r, g, b] = midColors[i];
+        for (let y = topH | 0; y < (topH + midH) | 0; y++) {
+          const row = y * W * 4;
+          for (let x = x0; x < x1 && x < W; x++) {
+            const idx = row + x * 4;
+            pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
+          }
+        }
+      }
+      // Bottom section
+      const botY = (topH + midH) | 0;
+      const botSections = [
+        [0, W * 0.167], [W * 0.167, W * 0.333], [W * 0.333, W * 0.5],
+        [W * 0.5, W * 0.583], [W * 0.583, W * 0.667], [W * 0.667, W * 0.833], [W * 0.833, W]
+      ];
+      const botColors = [[0, 33, 76], [255, 255, 255], [50, 0, 106],
+                          [0, 0, 0], [13, 13, 13], [0, 0, 0], [0, 0, 0]];
+      for (let i = 0; i < 7; i++) {
+        const x0 = botSections[i][0] | 0;
+        const x1 = botSections[i][1] | 0;
+        const [r, g, b] = botColors[i];
+        for (let y = botY; y < H; y++) {
+          const row = y * W * 4;
+          for (let x = x0; x < x1 && x < W; x++) {
+            const idx = row + x * 4;
+            pixels[idx] = r; pixels[idx + 1] = g; pixels[idx + 2] = b; pixels[idx + 3] = 255;
+          }
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // --- Channel Surf ---
+    function updateChannelSurf() {
+      surfTimer += 16;
+      if (surfState === 'static' && surfTimer > surfInterval) {
+        surfState = 'bars';
+        surfTimer = 0;
+        surfInterval = 1500 + Math.random() * 3000;
+      } else if (surfState === 'bars' && surfTimer > surfInterval) {
+        surfState = 'static';
+        surfTimer = 0;
+        surfInterval = 300 + Math.random() * 600;
+      }
+    }
+
+    // --- VHS Timestamp ---
+    function updateVhsTimestamp() {
+      const el = document.getElementById('vhsTimestamp');
+      if (!settings.showTimestamp) { el.classList.add('hidden'); return; }
+      el.classList.remove('hidden');
+      const now = new Date();
+      const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      const month = months[now.getMonth()];
+      const day = String(now.getDate()).padStart(2, ' ');
+      const year = now.getFullYear();
+      let h = now.getHours();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      el.textContent = `${month} ${day} ${year}  ${h}:${m} ${ampm}`;
+      // Occasional glitch
+      if (Math.random() < 0.02) {
+        el.style.transform = `translateX(${(Math.random() * 6 - 3) | 0}px)`;
+      } else {
+        el.style.transform = '';
+      }
+    }
+
+    // --- Clock Overlay ---
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = settings.showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!settings.showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    // --- CRT ---
+    function applyCrt() {
+      canvas.className = settings.crtCurve ? 'crt' : '';
+    }
+
+    // --- Main loop ---
+    function frame() {
+      const mode = settings.mode;
+      if (mode === 'channel-surf') {
+        updateChannelSurf();
+        if (surfState === 'static') drawStatic();
+        else drawColorBars();
+      } else if (mode === 'color-bars') {
+        drawColorBars();
+      } else {
+        drawStatic();
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // --- Settings ---
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.mode) settings.mode = cfg.mode;
+        if (cfg.showTimestamp !== undefined) settings.showTimestamp = cfg.showTimestamp;
+        if (cfg.crtCurve !== undefined) settings.crtCurve = cfg.crtCurve;
+        if (cfg.showClock !== undefined) settings.showClock = cfg.showClock;
+      } catch {}
+      document.getElementById('mode').value = settings.mode;
+      document.getElementById('showTimestamp').checked = settings.showTimestamp;
+      document.getElementById('crtCurve').checked = settings.crtCurve;
+      document.getElementById('showClock').checked = settings.showClock;
+      applyCrt();
+      updateClock();
+      updateVhsTimestamp();
+    }
+
+    async function saveSettings() {
+      settings.mode = document.getElementById('mode').value;
+      settings.showTimestamp = document.getElementById('showTimestamp').checked;
+      settings.crtCurve = document.getElementById('crtCurve').checked;
+      settings.showClock = document.getElementById('showClock').checked;
+      applyCrt();
+      updateClock();
+      updateVhsTimestamp();
+      // Reset surf state on mode change
+      surfState = 'static'; surfTimer = 0; surfInterval = 800;
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // --- SSE ---
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    // --- Init ---
+    loadSettings();
+    setInterval(() => { updateVhsTimestamp(); updateClock(); }, 5000);
+    requestAnimationFrame(frame);
+    connectSSE();
+  </script>
+</body>
+</html>

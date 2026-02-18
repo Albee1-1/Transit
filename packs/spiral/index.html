@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spiral</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .clock-overlay {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(126,87,194,0.08); z-index: 10; display: none;
+    }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1a2a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(8,4,16,0.95); border: 1px solid #2a1a4a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #5a3a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #9a7acc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #08041a; color: #9a7acc; border: 1px solid #2a1a4a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #7e57c2; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e0820; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #08041a; z-index: 20; }
+    .reload-indicator.connected { background: #7e57c2; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Pattern</h3>
+      <label><select id="pattern" onchange="saveSettings()">
+        <option value="vortex">Vortex</option>
+        <option value="fibonacci">Fibonacci</option>
+        <option value="tunnel">Tunnel</option>
+        <option value="galaxy">Galaxy</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="colorMode" onchange="saveSettings()">
+        <option value="purple">Purple</option>
+        <option value="cyan">Cyan</option>
+        <option value="fire">Fire</option>
+        <option value="rainbow">Rainbow</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'spiral';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, cx, cy;
+
+    let pattern = 'vortex';
+    let colorMode = 'purple';
+    let showClock = false;
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; cx = W/2; cy = H/2; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function getColor(f, alpha) {
+      switch (colorMode) {
+        case 'cyan': return `hsla(${180 + f * 40}, 80%, 55%, ${alpha})`;
+        case 'fire': return `hsla(${f * 40}, 100%, 50%, ${alpha})`;
+        case 'rainbow': return `hsla(${f * 360}, 80%, 55%, ${alpha})`;
+        default: return `hsla(${260 + f * 40}, 70%, 55%, ${alpha})`;
+      }
+    }
+
+    function drawVortex(t) {
+      const arms = 5;
+      const points = 200;
+      for (let arm = 0; arm < arms; arm++) {
+        const baseAngle = (arm / arms) * Math.PI * 2 + t * 0.5;
+        ctx.beginPath();
+        for (let i = 0; i < points; i++) {
+          const f = i / points;
+          const angle = baseAngle + f * Math.PI * 6;
+          const radius = f * Math.min(W, H) * 0.45;
+          const x = cx + Math.cos(angle) * radius;
+          const y = cy + Math.sin(angle) * radius;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = getColor(arm / arms, 0.4);
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = getColor(arm / arms, 0.6);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Dots along the arms
+        for (let i = 0; i < points; i += 5) {
+          const f = i / points;
+          const angle = baseAngle + f * Math.PI * 6;
+          const radius = f * Math.min(W, H) * 0.45;
+          const x = cx + Math.cos(angle) * radius;
+          const y = cy + Math.sin(angle) * radius;
+          ctx.beginPath();
+          ctx.arc(x, y, 1.5 + f * 2, 0, Math.PI * 2);
+          ctx.fillStyle = getColor(arm / arms, 0.3 + f * 0.4);
+          ctx.fill();
+        }
+      }
+    }
+
+    function drawFibonacci(t) {
+      const golden = (1 + Math.sqrt(5)) / 2;
+      const count = 500;
+      for (let i = 0; i < count; i++) {
+        const angle = i * golden * Math.PI * 2 + t * 0.3;
+        const radius = Math.sqrt(i) * 10;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        const size = 2 + (i / count) * 5;
+        const f = (i % 50) / 50;
+
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fillStyle = getColor(f, 0.4 + (i / count) * 0.4);
+        ctx.fill();
+      }
+    }
+
+    function drawTunnel(t) {
+      const rings = 30;
+      for (let r = rings; r >= 0; r--) {
+        const f = r / rings;
+        const radius = f * Math.min(W, H) * 0.5 + Math.sin(t + r * 0.3) * 10;
+        const segments = 60;
+        const rot = t * 0.5 + r * 0.1;
+
+        for (let s = 0; s < segments; s++) {
+          const angle = (s / segments) * Math.PI * 2 + rot;
+          const nextAngle = ((s + 1) / segments) * Math.PI * 2 + rot;
+          const x1 = cx + Math.cos(angle) * radius;
+          const y1 = cy + Math.sin(angle) * radius;
+          const x2 = cx + Math.cos(nextAngle) * radius;
+          const y2 = cy + Math.sin(nextAngle) * radius;
+
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = getColor(s / segments, 0.1 + (1 - f) * 0.3);
+          ctx.lineWidth = 1 + (1 - f) * 2;
+          ctx.stroke();
+        }
+      }
+    }
+
+    function drawGalaxy(t) {
+      const arms = 3;
+      const starsPerArm = 300;
+      for (let arm = 0; arm < arms; arm++) {
+        const baseAngle = (arm / arms) * Math.PI * 2 + t * 0.2;
+        for (let i = 0; i < starsPerArm; i++) {
+          const f = i / starsPerArm;
+          const angle = baseAngle + f * Math.PI * 4;
+          const radius = f * Math.min(W, H) * 0.42;
+          const scatter = (1 - f * 0.5) * 30;
+          const x = cx + Math.cos(angle) * radius + (Math.random() - 0.5) * scatter;
+          const y = cy + Math.sin(angle) * radius + (Math.random() - 0.5) * scatter;
+          const size = 0.5 + (1 - f) * 2 + Math.random();
+
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fillStyle = getColor(arm / arms + f * 0.3, 0.2 + f * 0.4);
+          ctx.fill();
+        }
+      }
+      // Core glow
+      const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 60);
+      coreGrad.addColorStop(0, getColor(0.5, 0.15));
+      coreGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      switch (pattern) {
+        case 'fibonacci': drawFibonacci(t); break;
+        case 'tunnel': drawTunnel(t); break;
+        case 'galaxy': drawGalaxy(t); break;
+        default: drawVortex(t);
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      el.textContent = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.pattern) pattern = cfg.pattern;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('pattern').value = pattern;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      updateClock();
+    }
+    async function saveSettings() {
+      pattern = document.getElementById('pattern').value;
+      colorMode = document.getElementById('colorMode').value;
+      showClock = document.getElementById('showClock').checked;
+      updateClock();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pattern, colorMode, showClock }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+    loadSettings(); setInterval(updateClock, 30000); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

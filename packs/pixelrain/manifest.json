@@ -1,0 +1,9 @@
+{
+  "name": "Pixel Rain",
+  "description": "Colorful pixel columns cascading down",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🟦",
+  "color": "#42a5f5",
+  "hasBackend": false
+}

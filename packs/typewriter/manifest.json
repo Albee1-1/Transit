@@ -1,0 +1,9 @@
+{
+  "name": "Typewriter",
+  "description": "Famous quotes typed out letter by letter",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "⌨️",
+  "color": "#8d6e63",
+  "hasBackend": false
+}

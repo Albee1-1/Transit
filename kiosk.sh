@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+ #!/usr/bin/env bash
 # Chromium kiosk launcher for Raspberry Pi.
 # Points at the Display Shell on port 3000, which redirects
 # to the active pack automatically.

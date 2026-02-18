@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020208; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .clock-overlay {
+      position: fixed; bottom: 20px; right: 20px;
+      font-family: 'Inter', sans-serif; font-size: 40px; font-weight: 100;
+      color: rgba(255,171,64,0.08); z-index: 10; display: none;
+    }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1a10; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(4,4,12,0.95); border: 1px solid #1a1a30; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #5a4a2a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #bb8844; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #06060e; color: #bb8844; border: 1px solid #1a1a30; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #ffab40; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0c0c1a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #06060e; z-index: 20; }
+    .reload-indicator.connected { background: #ffab40; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>View</h3>
+      <label><select id="view" onchange="saveSettings()">
+        <option value="top">Top Down</option>
+        <option value="angled" selected>Angled</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Speed</h3>
+      <label><select id="speed" onchange="saveSettings()">
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showOrbits" checked onchange="saveSettings()" /> Show orbit paths</label>
+      <label><input type="checkbox" id="showLabels" checked onchange="saveSettings()" /> Show labels</label>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'orbit';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, cx, cy;
+
+    let view = 'angled';
+    let speed = 'normal';
+    let showOrbits = true;
+    let showLabels = true;
+    let showClock = false;
+
+    const SPEED_MAP = { slow: 0.3, normal: 0.7, fast: 1.5 };
+
+    const PLANETS = [
+      { name: 'Mercury', dist: 0.1, size: 3, color: '#bbb', speed: 4.15, angle: 0 },
+      { name: 'Venus',   dist: 0.16, size: 5, color: '#f4a460', speed: 1.62, angle: 1 },
+      { name: 'Earth',   dist: 0.23, size: 5.5, color: '#4fc3f7', speed: 1.0, angle: 2 },
+      { name: 'Mars',    dist: 0.3, size: 4, color: '#e57373', speed: 0.53, angle: 3.5 },
+      { name: 'Jupiter', dist: 0.4, size: 12, color: '#ffcc80', speed: 0.084, angle: 4 },
+      { name: 'Saturn',  dist: 0.52, size: 10, color: '#ffe082', speed: 0.034, angle: 5, rings: true },
+      { name: 'Uranus',  dist: 0.62, size: 7, color: '#80deea', speed: 0.012, angle: 0.5 },
+      { name: 'Neptune', dist: 0.72, size: 6.5, color: '#5c6bc0', speed: 0.006, angle: 2.5 },
+    ];
+
+    let stars = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      cx = W / 2;
+      cy = H / 2;
+      initStars();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initStars() {
+      stars = [];
+      for (let i = 0; i < 200; i++) {
+        stars.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.2, a: 0.2 + Math.random() * 0.5 });
+      }
+    }
+
+    function drawStars() {
+      for (const s of stars) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+        ctx.fill();
+      }
+    }
+
+    function drawSun() {
+      // Sun glow
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+      grad.addColorStop(0, 'rgba(255,200,50,0.4)');
+      grad.addColorStop(0.3, 'rgba(255,150,30,0.15)');
+      grad.addColorStop(0.7, 'rgba(255,100,0,0.03)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 80, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Sun body
+      ctx.beginPath();
+      ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+      const sunGrad = ctx.createRadialGradient(cx - 4, cy - 4, 0, cx, cy, 16);
+      sunGrad.addColorStop(0, '#fff8e1');
+      sunGrad.addColorStop(0.5, '#ffcc00');
+      sunGrad.addColorStop(1, '#ff8f00');
+      ctx.fillStyle = sunGrad;
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = '#ff990060';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001 * (SPEED_MAP[speed] || 0.7);
+
+      ctx.fillStyle = '#020208';
+      ctx.fillRect(0, 0, W, H);
+
+      drawStars();
+      drawSun();
+
+      const tilt = view === 'angled' ? 0.4 : 0;
+      const maxRadius = Math.min(W, H) * 0.45;
+
+      // Sort by Y for depth ordering in angled view
+      const drawOrder = PLANETS.map((p, i) => {
+        const angle = p.angle + t * p.speed;
+        const orbitR = p.dist * maxRadius;
+        const px = cx + Math.cos(angle) * orbitR;
+        const py = cy + Math.sin(angle) * orbitR * Math.cos(tilt);
+        return { ...p, px, py, angle, orbitR, idx: i };
+      }).sort((a, b) => a.py - b.py);
+
+      // Draw orbit paths
+      if (showOrbits) {
+        for (const p of PLANETS) {
+          const orbitR = p.dist * maxRadius;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, orbitR, orbitR * Math.cos(tilt), 0, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+
+      // Draw planets
+      for (const p of drawOrder) {
+        // Shadow side hint
+        const sunAngle = Math.atan2(p.py - cy, p.px - cx);
+
+        ctx.beginPath();
+        ctx.arc(p.px, p.py, p.size, 0, Math.PI * 2);
+        const pGrad = ctx.createRadialGradient(
+          p.px - p.size * 0.3, p.py - p.size * 0.3, 0,
+          p.px, p.py, p.size
+        );
+        pGrad.addColorStop(0, p.color);
+        pGrad.addColorStop(1, p.color + '80');
+        ctx.fillStyle = pGrad;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = p.color + '40';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Saturn rings
+        if (p.rings) {
+          ctx.beginPath();
+          ctx.ellipse(p.px, p.py, p.size * 2, p.size * 0.6, 0.3, 0, Math.PI * 2);
+          ctx.strokeStyle = p.color + '50';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.ellipse(p.px, p.py, p.size * 2.5, p.size * 0.75, 0.3, 0, Math.PI * 2);
+          ctx.strokeStyle = p.color + '30';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Earth moon
+        if (p.name === 'Earth') {
+          const moonAngle = t * 12;
+          const moonDist = p.size * 3;
+          const mx = p.px + Math.cos(moonAngle) * moonDist;
+          const my = p.py + Math.sin(moonAngle) * moonDist * Math.cos(tilt);
+          ctx.beginPath();
+          ctx.arc(mx, my, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ccc';
+          ctx.fill();
+        }
+
+        // Labels
+        if (showLabels) {
+          ctx.font = '10px Inter';
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.name, p.px, p.py + p.size + 14);
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      el.textContent = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.view) view = cfg.view;
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.showOrbits !== undefined) showOrbits = cfg.showOrbits;
+        if (cfg.showLabels !== undefined) showLabels = cfg.showLabels;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('view').value = view;
+        document.getElementById('speed').value = speed;
+        document.getElementById('showOrbits').checked = showOrbits;
+        document.getElementById('showLabels').checked = showLabels;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      updateClock();
+    }
+    async function saveSettings() {
+      view = document.getElementById('view').value;
+      speed = document.getElementById('speed').value;
+      showOrbits = document.getElementById('showOrbits').checked;
+      showLabels = document.getElementById('showLabels').checked;
+      showClock = document.getElementById('showClock').checked;
+      updateClock();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ view, speed, showOrbits, showLabels, showClock }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+    loadSettings(); setInterval(updateClock, 30000); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

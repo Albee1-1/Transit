@@ -1,0 +1,9 @@
+{
+  "name": "Stocks",
+  "description": "Simulated stock and crypto ticker with sparkline charts",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "📈",
+  "color": "#4caf50",
+  "hasBackend": false
+}

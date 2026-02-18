@@ -1,0 +1,9 @@
+{
+  "name": "Particles",
+  "description": "Connected particle network with mouse-like attractor",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "✳️",
+  "color": "#7c4dff",
+  "hasBackend": false
+}

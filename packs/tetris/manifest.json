@@ -1,0 +1,9 @@
+{
+  "name": "Tetris",
+  "description": "Auto-playing Tetris with neon glow",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🧱",
+  "color": "#00e5ff",
+  "hasBackend": false
+}

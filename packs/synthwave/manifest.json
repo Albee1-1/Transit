@@ -1,0 +1,9 @@
+{
+  "name": "Synthwave",
+  "description": "Retro 80s grid with neon sunset horizon",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌅",
+  "color": "#ff6ec7",
+  "hasBackend": false
+}

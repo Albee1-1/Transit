@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ripple</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020810; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #0a1a2a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(2,8,16,0.95); border: 1px solid #1a2a3a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #1a5a7a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #4aaacc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #021018; color: #4aaacc; border: 1px solid #1a2a3a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0c1a28; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #021018; z-index: 20; }
+    .reload-indicator.connected { background: #29b6f6; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="colorMode" onchange="saveSettings()">
+        <option value="blue">Ocean Blue</option>
+        <option value="teal">Teal</option>
+        <option value="purple">Purple</option>
+        <option value="gold">Gold</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Drop Rate</h3>
+      <label><select id="rate" onchange="saveSettings()">
+        <option value="calm">Calm</option>
+        <option value="normal" selected>Normal</option>
+        <option value="heavy">Heavy</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'ripple';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let colorMode = 'blue';
+    let rate = 'normal';
+
+    const COLORS = {
+      blue:   { r: 41, g: 182, b: 246 },
+      teal:   { r: 38, g: 166, b: 154 },
+      purple: { r: 149, g: 117, b: 205 },
+      gold:   { r: 255, g: 193, b: 7 },
+    };
+    const RATE_MAP = { calm: 3000, normal: 1500, heavy: 600 };
+
+    let ripples = [];
+    let lastDrop = 0;
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function addRipple() {
+      ripples.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        radius: 0,
+        maxRadius: 100 + Math.random() * 200,
+        speed: 1.5 + Math.random() * 1.5,
+        alpha: 0.5,
+      });
+    }
+
+    function animate(ts) {
+      const c = COLORS[colorMode] || COLORS.blue;
+
+      // Fade
+      ctx.fillStyle = 'rgba(2, 8, 16, 0.06)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle water texture
+      const t = ts * 0.001;
+      for (let i = 0; i < 3; i++) {
+        const wx = Math.sin(t * 0.3 + i) * W * 0.3 + W * 0.5;
+        const wy = Math.cos(t * 0.2 + i * 2) * H * 0.3 + H * 0.5;
+        const grad = ctx.createRadialGradient(wx, wy, 0, wx, wy, 200);
+        grad.addColorStop(0, `rgba(${c.r},${c.g},${c.b},0.01)`);
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Drop new ripples
+      const interval = RATE_MAP[rate] || 1500;
+      if (ts - lastDrop > interval) {
+        addRipple();
+        lastDrop = ts;
+      }
+
+      // Draw ripples
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const rip = ripples[i];
+        rip.radius += rip.speed;
+        rip.alpha = (1 - rip.radius / rip.maxRadius) * 0.4;
+
+        if (rip.alpha <= 0) { ripples.splice(i, 1); continue; }
+
+        // Multiple concentric rings
+        for (let ring = 0; ring < 3; ring++) {
+          const r = rip.radius - ring * 15;
+          if (r < 0) continue;
+          const a = rip.alpha * (1 - ring * 0.3);
+
+          ctx.beginPath();
+          ctx.arc(rip.x, rip.y, r, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${c.r},${c.g},${c.b},${a})`;
+          ctx.lineWidth = 1.5 - ring * 0.4;
+          ctx.stroke();
+        }
+
+        // Center highlight on new ripples
+        if (rip.radius < 20) {
+          const highlight = ctx.createRadialGradient(rip.x, rip.y, 0, rip.x, rip.y, 15);
+          highlight.addColorStop(0, `rgba(${c.r},${c.g},${c.b},${0.15 * (1 - rip.radius / 20)})`);
+          highlight.addColorStop(1, 'transparent');
+          ctx.fillStyle = highlight;
+          ctx.beginPath();
+          ctx.arc(rip.x, rip.y, 15, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.rate) rate = cfg.rate;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('rate').value = rate;
+      } catch {}
+    }
+    async function saveSettings() {
+      colorMode = document.getElementById('colorMode').value;
+      rate = document.getElementById('rate').value;
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colorMode, rate }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

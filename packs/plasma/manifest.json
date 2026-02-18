@@ -1,0 +1,9 @@
+{
+  "name": "Plasma",
+  "description": "Classic retro plasma effect with color cycling",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🔆",
+  "color": "#ff4081",
+  "hasBackend": false
+}

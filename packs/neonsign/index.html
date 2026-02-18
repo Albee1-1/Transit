@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Sign</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&family=Pacifico&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0408; overflow: hidden; height: 100vh; user-select: none;
+           display: flex; align-items: center; justify-content: center; flex-direction: column; }
+
+    .neon-container {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; gap: 30px;
+    }
+
+    .neon-text {
+      font-family: 'Pacifico', cursive; font-size: 10vw;
+      color: var(--neon-color, #ff1744);
+      text-shadow:
+        0 0 7px var(--neon-color, #ff1744),
+        0 0 10px var(--neon-color, #ff1744),
+        0 0 21px var(--neon-color, #ff1744),
+        0 0 42px var(--neon-glow, #ff174480),
+        0 0 82px var(--neon-glow, #ff174440),
+        0 0 92px var(--neon-glow, #ff174430);
+      animation: neonFlicker 4s ease-in-out infinite;
+      transition: all 0.3s;
+    }
+
+    .neon-sub {
+      font-family: 'Inter', sans-serif; font-size: 2.5vw; font-weight: 200;
+      letter-spacing: 0.4em; text-transform: uppercase;
+      color: var(--neon-sub, #ff8a80);
+      text-shadow:
+        0 0 7px var(--neon-sub, #ff8a80),
+        0 0 20px var(--neon-glow, #ff174440);
+      animation: neonFlicker2 5s ease-in-out infinite;
+    }
+
+    .wall-texture {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 1;
+      background:
+        radial-gradient(ellipse at 50% 50%, rgba(30,10,15,0.3) 0%, rgba(10,4,8,0.9) 70%),
+        repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,0.01) 40px, rgba(255,255,255,0.01) 41px),
+        repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(255,255,255,0.008) 20px, rgba(255,255,255,0.008) 21px);
+    }
+
+    .clock-overlay {
+      position: fixed; bottom: 30px; right: 30px;
+      font-family: 'Inter', sans-serif; font-size: 40px; font-weight: 100;
+      z-index: 10; display: none;
+      color: var(--neon-sub, #ff8a80);
+      text-shadow: 0 0 10px var(--neon-glow, #ff174440);
+      opacity: 0.3;
+    }
+
+    @keyframes neonFlicker {
+      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+      20%, 24%, 55% { opacity: 0.85; }
+    }
+    @keyframes neonFlicker2 {
+      0%, 40%, 42%, 100% { opacity: 0.9; }
+      41% { opacity: 0.6; }
+    }
+
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #2a1020; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(12,6,10,0.95); border: 1px solid #3a1a2a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 240px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #6a2a4a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #cc5577; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select, .settings-panel input[type="text"] { background: #0c0610; color: #cc5577; border: 1px solid #3a1a2a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #ff1744; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a0c18; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #0c0610; z-index: 20; }
+    .reload-indicator.connected { background: #ff1744; }
+  </style>
+</head>
+<body>
+  <div class="wall-texture"></div>
+  <div class="neon-container">
+    <div class="neon-text" id="neonText">Hello</div>
+    <div class="neon-sub" id="neonSub">OPEN 24 HOURS</div>
+  </div>
+  <div class="clock-overlay" id="clock"></div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Main Text</h3>
+      <label><input type="text" id="mainText" value="Hello" onchange="saveSettings()" /></label>
+    </div>
+    <div class="setting-group">
+      <h3>Subtitle</h3>
+      <label><input type="text" id="subText" value="OPEN 24 HOURS" onchange="saveSettings()" /></label>
+    </div>
+    <div class="setting-group">
+      <h3>Neon Color</h3>
+      <label><select id="neonColor" onchange="saveSettings()">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="pink">Pink</option>
+        <option value="green">Green</option>
+        <option value="yellow">Yellow</option>
+        <option value="white">White</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'neonsign';
+
+    let mainText = 'Hello';
+    let subText = 'OPEN 24 HOURS';
+    let neonColor = 'red';
+    let showClock = false;
+
+    const COLORS = {
+      red:    { main: '#ff1744', glow: '#ff174480', sub: '#ff8a80' },
+      blue:   { main: '#2979ff', glow: '#2979ff80', sub: '#82b1ff' },
+      pink:   { main: '#f50057', glow: '#f5005780', sub: '#ff80ab' },
+      green:  { main: '#00e676', glow: '#00e67680', sub: '#69f0ae' },
+      yellow: { main: '#ffd600', glow: '#ffd60080', sub: '#ffff00' },
+      white:  { main: '#ffffff', glow: '#ffffff60', sub: '#e0e0e0' },
+    };
+
+    function applyColors() {
+      const c = COLORS[neonColor] || COLORS.red;
+      document.documentElement.style.setProperty('--neon-color', c.main);
+      document.documentElement.style.setProperty('--neon-glow', c.glow);
+      document.documentElement.style.setProperty('--neon-sub', c.sub);
+    }
+
+    function applyText() {
+      document.getElementById('neonText').textContent = mainText;
+      document.getElementById('neonSub').textContent = subText;
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      el.textContent = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.mainText !== undefined) mainText = cfg.mainText;
+        if (cfg.subText !== undefined) subText = cfg.subText;
+        if (cfg.neonColor) neonColor = cfg.neonColor;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('mainText').value = mainText;
+        document.getElementById('subText').value = subText;
+        document.getElementById('neonColor').value = neonColor;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      applyColors(); applyText(); updateClock();
+    }
+
+    async function saveSettings() {
+      mainText = document.getElementById('mainText').value;
+      subText = document.getElementById('subText').value;
+      neonColor = document.getElementById('neonColor').value;
+      showClock = document.getElementById('showClock').checked;
+      applyColors(); applyText(); updateClock();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mainText, subText, neonColor, showClock }) }); } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+    loadSettings(); setInterval(updateClock, 30000); connectSSE();
+  </script>
+</body>
+</html>

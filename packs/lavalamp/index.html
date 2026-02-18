@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lava Lamp</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0008; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed; bottom: 30px; right: 30px;
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(255,255,255,0.1); letter-spacing: 0.05em;
+      z-index: 10; display: none;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #333;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(15,5,20,0.95); border: 1px solid #3a1a4a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #884488; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #cc88cc; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #120818; color: #cc88cc; border: 1px solid #3a1a4a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #ff6b9d; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a0a2a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #ff6b9d; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color Theme</h3>
+      <label>
+        <select id="theme" onchange="saveSettings()">
+          <option value="classic">Classic Red</option>
+          <option value="ocean">Ocean Blue</option>
+          <option value="sunset">Sunset</option>
+          <option value="neon">Neon Pink</option>
+          <option value="forest">Forest Green</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Blob Count</h3>
+      <label>
+        <select id="blobCount" onchange="saveSettings()">
+          <option value="5">5</option>
+          <option value="8" selected>8</option>
+          <option value="12">12</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'lavalamp';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let theme = 'classic';
+    let blobCount = 8;
+    let showClock = false;
+
+    const THEMES = {
+      classic: { bg: [10, 0, 8], blobs: ['#ff1744','#ff5252','#ff8a80','#d50000','#ff6b9d'], glow: '#ff174440' },
+      ocean:   { bg: [0, 5, 15], blobs: ['#00bcd4','#0097a7','#26c6da','#00acc1','#4dd0e1'], glow: '#00bcd440' },
+      sunset:  { bg: [12, 4, 0], blobs: ['#ff9800','#ff5722','#ffb74d','#f4511e','#ffcc02'], glow: '#ff980040' },
+      neon:    { bg: [8, 0, 12], blobs: ['#e040fb','#ea80fc','#d500f9','#aa00ff','#ff80ab'], glow: '#e040fb40' },
+      forest:  { bg: [0, 8, 4], blobs: ['#00e676','#69f0ae','#00c853','#76ff03','#b2ff59'], glow: '#00e67640' },
+    };
+
+    let blobs = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initBlobs() {
+      const t = THEMES[theme] || THEMES.classic;
+      blobs = [];
+      for (let i = 0; i < blobCount; i++) {
+        blobs.push({
+          x: W * 0.2 + Math.random() * W * 0.6,
+          y: H * 0.2 + Math.random() * H * 0.6,
+          r: 40 + Math.random() * 60,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: -0.3 - Math.random() * 0.5,
+          color: t.blobs[i % t.blobs.length],
+          phase: Math.random() * Math.PI * 2,
+          pulseSpeed: 0.5 + Math.random() * 0.5,
+        });
+      }
+    }
+
+    function drawBlob(blob, t) {
+      const pulse = 1 + Math.sin(t * blob.pulseSpeed + blob.phase) * 0.15;
+      const r = blob.r * pulse;
+
+      // Glow
+      const grad = ctx.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, r * 2.5);
+      grad.addColorStop(0, blob.color + '40');
+      grad.addColorStop(0.5, blob.color + '15');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(blob.x, blob.y, r * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Main blob with organic shape
+      ctx.beginPath();
+      const points = 64;
+      for (let i = 0; i <= points; i++) {
+        const angle = (i / points) * Math.PI * 2;
+        const wobble = Math.sin(angle * 3 + t * 2 + blob.phase) * r * 0.12
+                     + Math.sin(angle * 5 + t * 1.5) * r * 0.06;
+        const cr = r + wobble;
+        const px = blob.x + Math.cos(angle) * cr;
+        const py = blob.y + Math.sin(angle) * cr;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+
+      const bgrad = ctx.createRadialGradient(
+        blob.x - r * 0.3, blob.y - r * 0.3, 0,
+        blob.x, blob.y, r
+      );
+      bgrad.addColorStop(0, blob.color + 'ee');
+      bgrad.addColorStop(0.7, blob.color + 'aa');
+      bgrad.addColorStop(1, blob.color + '44');
+      ctx.fillStyle = bgrad;
+      ctx.fill();
+
+      // Highlight
+      ctx.beginPath();
+      ctx.ellipse(blob.x - r * 0.25, blob.y - r * 0.25, r * 0.3, r * 0.2, -0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fill();
+    }
+
+    function updateBlobs(dt, t) {
+      for (const b of blobs) {
+        // Gentle buoyancy
+        b.vy += Math.sin(t * 0.3 + b.phase) * 0.01;
+        b.vx += Math.sin(t * 0.2 + b.phase + 1) * 0.005;
+
+        b.x += b.vx * dt * 60;
+        b.y += b.vy * dt * 60;
+
+        // Boundaries - soft bounce
+        const margin = b.r * 1.5;
+        if (b.y < margin) { b.vy = Math.abs(b.vy) * 0.6; b.y = margin; }
+        if (b.y > H - margin) { b.vy = -Math.abs(b.vy) * 0.6; b.y = H - margin; }
+        if (b.x < margin) { b.vx = Math.abs(b.vx) * 0.8; }
+        if (b.x > W - margin) { b.vx = -Math.abs(b.vx) * 0.8; }
+
+        // Contain horizontal drift
+        const centerPull = (W * 0.5 - b.x) * 0.0001;
+        b.vx += centerPull;
+
+        // Damping
+        b.vx *= 0.998;
+        b.vy *= 0.998;
+      }
+    }
+
+    let lastTime = 0;
+    function animate(ts) {
+      const t = ts * 0.001;
+      const dt = Math.min((ts - lastTime) * 0.001, 0.05);
+      lastTime = ts;
+
+      const th = THEMES[theme] || THEMES.classic;
+      ctx.fillStyle = `rgb(${th.bg[0]},${th.bg[1]},${th.bg[2]})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Lamp container effect - subtle gradient edges
+      const edgeGrad = ctx.createLinearGradient(0, 0, 0, H);
+      edgeGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
+      edgeGrad.addColorStop(0.1, 'rgba(0,0,0,0)');
+      edgeGrad.addColorStop(0.9, 'rgba(0,0,0,0)');
+      edgeGrad.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.fillStyle = edgeGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      updateBlobs(dt, t);
+
+      // Sort by size for layering
+      const sorted = [...blobs].sort((a, b) => a.r - b.r);
+      for (const blob of sorted) {
+        drawBlob(blob, t);
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      const h = now.getHours() % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      el.textContent = `${h}:${m}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.theme) theme = cfg.theme;
+        if (cfg.blobCount) blobCount = cfg.blobCount;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('theme').value = theme;
+        document.getElementById('blobCount').value = blobCount;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      initBlobs();
+      updateClock();
+    }
+
+    async function saveSettings() {
+      theme = document.getElementById('theme').value;
+      blobCount = parseInt(document.getElementById('blobCount').value);
+      showClock = document.getElementById('showClock').checked;
+      initBlobs();
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme, blobCount, showClock }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 30000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>

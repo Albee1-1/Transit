@@ -1,0 +1,9 @@
+{
+  "name": "Countdown",
+  "description": "Flip-card countdown timer to a configurable event",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "⏳",
+  "color": "#ff5252",
+  "hasBackend": false
+}

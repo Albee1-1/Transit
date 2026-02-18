@@ -1,0 +1,9 @@
+{
+  "name": "Fireworks",
+  "description": "Continuous fireworks bursting with trailing particles",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🎆",
+  "color": "#ffd740",
+  "hasBackend": false
+}

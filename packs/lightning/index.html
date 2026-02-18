@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lightning</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #08060e; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1a2a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(8,6,14,0.95); border: 1px solid #2a1a4a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #5a3a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #9a7acc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #08061a; color: #9a7acc; border: 1px solid #2a1a4a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e0820; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #08061a; z-index: 20; }
+    .reload-indicator.connected { background: #b388ff; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Frequency</h3>
+      <label><select id="frequency" onchange="saveSettings()">
+        <option value="rare">Rare</option>
+        <option value="normal" selected>Normal</option>
+        <option value="storm">Storm</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Color</h3>
+      <label><select id="colorMode" onchange="saveSettings()">
+        <option value="purple">Purple</option>
+        <option value="white">White</option>
+        <option value="blue">Blue</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'lightning';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let frequency = 'normal';
+    let colorMode = 'purple';
+
+    const FREQ_MAP = { rare: 5000, normal: 2500, storm: 800 };
+    const COLORS = {
+      purple: { bolt: '#d0b0ff', glow: '#b388ff', flash: 'rgba(120,80,180,', cloud: '#2a1a40' },
+      white:  { bolt: '#ffffff', glow: '#e0e0ff', flash: 'rgba(180,180,200,', cloud: '#1a1a2a' },
+      blue:   { bolt: '#80d8ff', glow: '#40c4ff', flash: 'rgba(60,140,200,', cloud: '#0a1a30' },
+    };
+
+    let bolts = [];
+    let flashAlpha = 0;
+    let lastStrike = 0;
+    let clouds = [];
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; initClouds(); }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initClouds() {
+      clouds = [];
+      for (let i = 0; i < 8; i++) {
+        clouds.push({
+          x: Math.random() * W, y: Math.random() * H * 0.25,
+          w: 150 + Math.random() * 300, h: 40 + Math.random() * 60,
+          speed: 0.1 + Math.random() * 0.3, alpha: 0.15 + Math.random() * 0.2,
+        });
+      }
+    }
+
+    function generateBolt(x1, y1, x2, y2, depth) {
+      const segments = [];
+      const dx = x2 - x1, dy = y2 - y1;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 10 || depth > 5) {
+        segments.push({ x1, y1, x2, y2, width: Math.max(0.5, 3 - depth) });
+        return segments;
+      }
+      const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * dist * 0.3;
+      const my = (y1 + y2) / 2 + (Math.random() - 0.5) * dist * 0.1;
+      segments.push(...generateBolt(x1, y1, mx, my, depth + 1));
+      segments.push(...generateBolt(mx, my, x2, y2, depth + 1));
+      // Branch
+      if (depth < 3 && Math.random() < 0.35) {
+        const bx = mx + (Math.random() - 0.5) * dist * 0.5;
+        const by = my + dist * 0.3 * Math.random();
+        segments.push(...generateBolt(mx, my, bx, by, depth + 2));
+      }
+      return segments;
+    }
+
+    function strike() {
+      const sx = W * 0.2 + Math.random() * W * 0.6;
+      const segments = generateBolt(sx, 0, sx + (Math.random() - 0.5) * 200, H * 0.7 + Math.random() * H * 0.2, 0);
+      bolts.push({ segments, alpha: 1, birth: performance.now() });
+      flashAlpha = 0.3 + Math.random() * 0.2;
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+      const pal = COLORS[colorMode] || COLORS.purple;
+
+      // Background
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#08060e');
+      grad.addColorStop(0.4, '#0c0a14');
+      grad.addColorStop(1, '#06040a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Flash
+      if (flashAlpha > 0) {
+        ctx.fillStyle = pal.flash + flashAlpha + ')';
+        ctx.fillRect(0, 0, W, H);
+        flashAlpha *= 0.85;
+        if (flashAlpha < 0.005) flashAlpha = 0;
+      }
+
+      // Clouds
+      for (const c of clouds) {
+        c.x += c.speed;
+        if (c.x > W + c.w) c.x = -c.w;
+        const cg = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.w * 0.5);
+        cg.addColorStop(0, pal.cloud + 'a0');
+        cg.addColorStop(0.5, pal.cloud + '60');
+        cg.addColorStop(1, 'transparent');
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, c.w * 0.5, c.h, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Bolts
+      for (let i = bolts.length - 1; i >= 0; i--) {
+        const b = bolts[i];
+        const age = ts - b.birth;
+        b.alpha = Math.max(0, 1 - age / 300);
+        if (b.alpha <= 0) { bolts.splice(i, 1); continue; }
+
+        for (const seg of b.segments) {
+          ctx.beginPath();
+          ctx.moveTo(seg.x1, seg.y1);
+          ctx.lineTo(seg.x2, seg.y2);
+          // Core
+          ctx.strokeStyle = pal.bolt;
+          ctx.lineWidth = seg.width * b.alpha;
+          ctx.globalAlpha = b.alpha;
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = pal.glow;
+          ctx.stroke();
+          // Outer glow
+          ctx.lineWidth = seg.width * 3 * b.alpha;
+          ctx.globalAlpha = b.alpha * 0.3;
+          ctx.strokeStyle = pal.glow;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // Rain
+      ctx.strokeStyle = 'rgba(150,160,180,0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 200; i++) {
+        const rx = (i * 7.3 + t * 300) % (W + 100) - 50;
+        const ry = (i * 13.7 + t * 800) % (H + 100) - 50;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry);
+        ctx.lineTo(rx - 1, ry + 15);
+        ctx.stroke();
+      }
+
+      // Trigger strikes
+      const interval = FREQ_MAP[frequency] || 2500;
+      if (ts - lastStrike > interval + Math.random() * interval * 0.5) {
+        strike();
+        if (Math.random() < 0.3) setTimeout(strike, 50 + Math.random() * 100);
+        lastStrike = ts;
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.frequency) frequency = cfg.frequency;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        document.getElementById('frequency').value = frequency;
+        document.getElementById('colorMode').value = colorMode;
+      } catch {}
+    }
+    async function saveSettings() {
+      frequency = document.getElementById('frequency').value;
+      colorMode = document.getElementById('colorMode').value;
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ frequency, colorMode }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

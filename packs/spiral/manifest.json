@@ -1,0 +1,9 @@
+{
+  "name": "Spiral",
+  "description": "Mesmerizing rotating spiral vortex",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌀",
+  "color": "#7e57c2",
+  "hasBackend": false
+}

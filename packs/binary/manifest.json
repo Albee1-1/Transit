@@ -1,0 +1,9 @@
+{
+  "name": "Binary Clock",
+  "description": "Time displayed in binary BCD format with glowing LED dots",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🤖",
+  "color": "#76ff03",
+  "hasBackend": false
+}

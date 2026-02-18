@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DNA Helix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020a12; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .clock-overlay {
+      position: fixed; bottom: 30px; right: 30px;
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(38,198,218,0.08); z-index: 10; display: none;
+    }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #0a2030; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(4,12,20,0.95); border: 1px solid #1a3040; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #1a5a6a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #4aaabc; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #041018; color: #4aaabc; border: 1px solid #1a3040; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .settings-panel input[type="checkbox"] { accent-color: #26c6da; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0c1a28; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #041018; z-index: 20; }
+    .reload-indicator.connected { background: #26c6da; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color Scheme</h3>
+      <label><select id="colorScheme" onchange="saveSettings()">
+        <option value="bio">Bio Cyan</option>
+        <option value="xray">X-Ray</option>
+        <option value="neon">Neon</option>
+        <option value="gold">Gold</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Rotation Speed</h3>
+      <label><select id="speed" onchange="saveSettings()">
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showParticles" checked onchange="saveSettings()" /> Floating particles</label>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'dna';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let colorScheme = 'bio';
+    let speed = 'normal';
+    let showParticles = true;
+    let showClock = false;
+
+    const SCHEMES = {
+      bio:  { strand1: '#26c6da', strand2: '#00897b', bond: '#00695c', bg: [2,10,18] },
+      xray: { strand1: '#90caf9', strand2: '#42a5f5', bond: '#1e88e5', bg: [2,4,12] },
+      neon: { strand1: '#e040fb', strand2: '#00e5ff', bond: '#76ff03', bg: [4,2,10] },
+      gold: { strand1: '#ffd54f', strand2: '#ff8f00', bond: '#ff6f00', bg: [10,6,2] },
+    };
+    const SPEED_MAP = { slow: 0.4, normal: 0.8, fast: 1.5 };
+
+    let particles = [];
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; initParticles(); }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initParticles() {
+      particles = [];
+      if (!showParticles) return;
+      for (let i = 0; i < 50; i++) {
+        particles.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+          r: 1 + Math.random() * 2, alpha: 0.05 + Math.random() * 0.1,
+        });
+      }
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001 * (SPEED_MAP[speed] || 0.8);
+      const s = SCHEMES[colorScheme] || SCHEMES.bio;
+
+      ctx.fillStyle = `rgb(${s.bg[0]},${s.bg[1]},${s.bg[2]})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Background particles
+      for (const p of particles) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+        if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${p.alpha})`;
+        ctx.fill();
+      }
+
+      // DNA helix
+      const cx = W / 2;
+      const helixRadius = Math.min(W, H) * 0.15;
+      const segments = 60;
+      const segmentH = H / segments;
+      const twist = 0.12;
+
+      const strand1Points = [];
+      const strand2Points = [];
+
+      for (let i = 0; i <= segments; i++) {
+        const y = i * segmentH;
+        const angle = i * twist + t;
+        const depth1 = Math.cos(angle);
+        const depth2 = Math.cos(angle + Math.PI);
+
+        const x1 = cx + Math.sin(angle) * helixRadius;
+        const x2 = cx + Math.sin(angle + Math.PI) * helixRadius;
+        const z1 = depth1;
+        const z2 = depth2;
+
+        strand1Points.push({ x: x1, y, z: z1 });
+        strand2Points.push({ x: x2, y, z: z2 });
+      }
+
+      // Draw bonds (rungs) first
+      for (let i = 0; i < segments; i += 3) {
+        const p1 = strand1Points[i];
+        const p2 = strand2Points[i];
+        const avgZ = (p1.z + p2.z) / 2;
+        const alpha = 0.1 + (avgZ + 1) * 0.15;
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.strokeStyle = s.bond + Math.round(alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 1.5 + (avgZ + 1) * 0.5;
+        ctx.stroke();
+
+        // Bond midpoint node
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2;
+        ctx.beginPath();
+        ctx.arc(mx, my, 2, 0, Math.PI * 2);
+        ctx.fillStyle = s.bond + Math.round(alpha * 1.5 * 255).toString(16).padStart(2, '0');
+        ctx.fill();
+      }
+
+      // Draw strands
+      function drawStrand(points, color) {
+        for (let i = 1; i < points.length; i++) {
+          const p = points[i - 1];
+          const q = points[i];
+          const z = (p.z + 1) / 2;
+          const alpha = 0.3 + z * 0.7;
+          const width = 2 + z * 3;
+
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(q.x, q.y);
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = width;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+
+        // Nodes at intervals
+        for (let i = 0; i < points.length; i += 3) {
+          const p = points[i];
+          const z = (p.z + 1) / 2;
+          const size = 3 + z * 4;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.4 + z * 0.6;
+          ctx.shadowBlur = 10 * z;
+          ctx.shadowColor = color;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // Draw back strand first, then front
+      const s1Front = strand1Points[Math.floor(segments / 2)].z > strand2Points[Math.floor(segments / 2)].z;
+      if (s1Front) {
+        drawStrand(strand2Points, s.strand2);
+        drawStrand(strand1Points, s.strand1);
+      } else {
+        drawStrand(strand1Points, s.strand1);
+        drawStrand(strand2Points, s.strand2);
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      el.textContent = `${now.getHours() % 12 || 12}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorScheme) colorScheme = cfg.colorScheme;
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.showParticles !== undefined) showParticles = cfg.showParticles;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('colorScheme').value = colorScheme;
+        document.getElementById('speed').value = speed;
+        document.getElementById('showParticles').checked = showParticles;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      initParticles(); updateClock();
+    }
+    async function saveSettings() {
+      colorScheme = document.getElementById('colorScheme').value;
+      speed = document.getElementById('speed').value;
+      showParticles = document.getElementById('showParticles').checked;
+      showClock = document.getElementById('showClock').checked;
+      initParticles(); updateClock();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colorScheme, speed, showParticles, showClock }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+    loadSettings(); setInterval(updateClock, 30000); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

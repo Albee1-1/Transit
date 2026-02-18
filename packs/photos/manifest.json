@@ -1,0 +1,9 @@
+{
+  "name": "Photos",
+  "description": "Digital photo frame with Ken Burns pan and zoom effects",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "📷",
+  "color": "#8d6e63",
+  "hasBackend": false
+}

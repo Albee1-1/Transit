@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pomodoro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+    }
+    .ring-wrap {
+      position: relative;
+      width: min(60vh, 60vw);
+      height: min(60vh, 60vw);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ring-wrap svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+    .ring-bg {
+      fill: none;
+      stroke: #1a1a1a;
+      stroke-width: 6;
+    }
+    .ring-progress {
+      fill: none;
+      stroke-width: 6;
+      stroke-linecap: round;
+      transition: stroke 0.6s;
+    }
+    .ring-inner {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+    .phase-label {
+      font-size: min(3.5vw, 3.5vh);
+      font-weight: 300;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      margin-bottom: 0.8vh;
+      transition: color 0.4s;
+    }
+    .time-display {
+      font-size: min(12vw, 12vh);
+      font-weight: 200;
+      letter-spacing: -0.02em;
+      color: #fff;
+      line-height: 1;
+    }
+    .hint-text {
+      font-size: min(1.6vw, 1.6vh);
+      color: #333;
+      margin-top: 1.5vh;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      transition: opacity 0.3s;
+    }
+    .session-dots {
+      display: flex;
+      gap: min(1.8vw, 1.8vh);
+      margin-top: min(4vh, 4vw);
+      justify-content: center;
+    }
+    .dot {
+      width: min(1.4vw, 1.4vh);
+      height: min(1.4vw, 1.4vh);
+      border-radius: 50%;
+      background: #1a1a1a;
+      transition: background 0.4s, transform 0.3s;
+    }
+    .dot.filled { background: #e57373; transform: scale(1.25); }
+    .dot.active { background: #444; animation: dotPulse 1.5s ease-in-out infinite; }
+    @keyframes dotPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Settings */
+    .settings-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: none;
+      border: none;
+      color: #222;
+      font-size: 22px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed;
+      top: 60px;
+      right: 16px;
+      background: rgba(15, 15, 15, 0.95);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px;
+      display: none;
+      z-index: 100;
+      min-width: 230px;
+      backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #999;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+    .settings-panel input[type="checkbox"] {
+      accent-color: #e57373;
+      width: 16px;
+      height: 16px;
+    }
+    .settings-panel select {
+      background: #111;
+      color: #999;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .setting-group {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Focus Duration</h3>
+      <label><select id="focusDuration" onchange="saveSettings()">
+        <option value="15">15 minutes</option>
+        <option value="25" selected>25 minutes</option>
+        <option value="45">45 minutes</option>
+        <option value="60">60 minutes</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Break Duration</h3>
+      <label><select id="breakDuration" onchange="saveSettings()">
+        <option value="5" selected>5 minutes</option>
+        <option value="10">10 minutes</option>
+        <option value="15">15 minutes</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Long Break</h3>
+      <label><select id="longBreakDuration" onchange="saveSettings()">
+        <option value="15" selected>15 minutes</option>
+        <option value="20">20 minutes</option>
+        <option value="30">30 minutes</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Sessions Before Long Break</h3>
+      <label><select id="sessionsBeforeLong" onchange="saveSettings()">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Behavior</h3>
+      <label><input type="checkbox" id="autoStart" checked onchange="saveSettings()" /> Auto-start next phase</label>
+    </div>
+  </div>
+
+  <div class="ring-wrap" id="ringWrap" onclick="toggleTimer()">
+    <svg viewBox="0 0 200 200">
+      <circle class="ring-bg" cx="100" cy="100" r="88" />
+      <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="88" />
+    </svg>
+    <div class="ring-inner">
+      <div class="phase-label" id="phaseLabel">FOCUS</div>
+      <div class="time-display" id="timeDisplay">25:00</div>
+      <div class="hint-text" id="hintText">click to start</div>
+    </div>
+  </div>
+  <div class="session-dots" id="sessionDots"></div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'pomodoro';
+    const CIRCUMFERENCE = 2 * Math.PI * 88;
+
+    let focusDuration = 25, breakDuration = 5, longBreakDuration = 15;
+    let sessionsBeforeLong = 4, autoStart = true;
+    let phase = 'focus'; // 'focus' | 'break' | 'longbreak'
+    let totalSeconds = 25 * 60;
+    let remaining = totalSeconds;
+    let running = false;
+    let completedSessions = 0;
+    let lastTick = null;
+    let animFrame = null;
+
+    const ringEl = document.getElementById('ringProgress');
+    const phaseEl = document.getElementById('phaseLabel');
+    const timeEl = document.getElementById('timeDisplay');
+    const hintEl = document.getElementById('hintText');
+    const dotsEl = document.getElementById('sessionDots');
+
+    ringEl.style.strokeDasharray = CIRCUMFERENCE;
+    ringEl.style.strokeDashoffset = 0;
+
+    function getColor() {
+      return phase === 'focus' ? '#e57373' : '#81c784';
+    }
+
+    function updateRing(fraction) {
+      const offset = CIRCUMFERENCE * (1 - fraction);
+      ringEl.style.strokeDashoffset = offset;
+      ringEl.style.stroke = getColor();
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    function renderDots() {
+      dotsEl.innerHTML = '';
+      for (let i = 0; i < sessionsBeforeLong; i++) {
+        const d = document.createElement('div');
+        d.className = 'dot';
+        if (i < completedSessions) d.classList.add('filled');
+        else if (i === completedSessions && phase === 'focus' && running) d.classList.add('active');
+        dotsEl.appendChild(d);
+      }
+    }
+
+    function render() {
+      const sec = Math.ceil(remaining);
+      timeEl.textContent = formatTime(sec);
+      phaseEl.textContent = phase === 'focus' ? 'FOCUS' : 'BREAK';
+      phaseEl.style.color = getColor();
+      updateRing(remaining / totalSeconds);
+      hintEl.textContent = running ? 'click to pause' : (remaining < totalSeconds ? 'click to resume' : 'click to start');
+      hintEl.style.opacity = running ? '0' : '1';
+      renderDots();
+    }
+
+    function startPhase(newPhase) {
+      phase = newPhase;
+      if (phase === 'focus') {
+        totalSeconds = focusDuration * 60;
+      } else if (phase === 'longbreak') {
+        totalSeconds = longBreakDuration * 60;
+      } else {
+        totalSeconds = breakDuration * 60;
+      }
+      remaining = totalSeconds;
+      running = autoStart;
+      lastTick = running ? performance.now() : null;
+      render();
+    }
+
+    function onPhaseComplete() {
+      running = false;
+      if (phase === 'focus') {
+        completedSessions++;
+        if (completedSessions >= sessionsBeforeLong) {
+          startPhase('longbreak');
+        } else {
+          startPhase('break');
+        }
+      } else {
+        if (phase === 'longbreak') completedSessions = 0;
+        startPhase('focus');
+      }
+    }
+
+    function tick(now) {
+      animFrame = requestAnimationFrame(tick);
+      if (!running || !lastTick) { lastTick = now; return; }
+      const delta = (now - lastTick) / 1000;
+      lastTick = now;
+      remaining -= delta;
+      if (remaining <= 0) {
+        remaining = 0;
+        render();
+        onPhaseComplete();
+        return;
+      }
+      render();
+    }
+
+    function toggleTimer() {
+      if (running) {
+        running = false;
+        lastTick = null;
+      } else {
+        running = true;
+        lastTick = performance.now();
+      }
+      render();
+    }
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.focusDuration) focusDuration = +cfg.focusDuration;
+        if (cfg.breakDuration) breakDuration = +cfg.breakDuration;
+        if (cfg.longBreakDuration) longBreakDuration = +cfg.longBreakDuration;
+        if (cfg.sessionsBeforeLong) sessionsBeforeLong = +cfg.sessionsBeforeLong;
+        if (cfg.autoStart !== undefined) autoStart = cfg.autoStart;
+        document.getElementById('focusDuration').value = focusDuration;
+        document.getElementById('breakDuration').value = breakDuration;
+        document.getElementById('longBreakDuration').value = longBreakDuration;
+        document.getElementById('sessionsBeforeLong').value = sessionsBeforeLong;
+        document.getElementById('autoStart').checked = autoStart;
+      } catch {}
+      totalSeconds = focusDuration * 60;
+      remaining = totalSeconds;
+      render();
+    }
+
+    async function saveSettings() {
+      focusDuration = +document.getElementById('focusDuration').value;
+      breakDuration = +document.getElementById('breakDuration').value;
+      longBreakDuration = +document.getElementById('longBreakDuration').value;
+      sessionsBeforeLong = +document.getElementById('sessionsBeforeLong').value;
+      autoStart = document.getElementById('autoStart').checked;
+      // Reset timer on settings change
+      running = false;
+      lastTick = null;
+      completedSessions = 0;
+      phase = 'focus';
+      totalSeconds = focusDuration * 60;
+      remaining = totalSeconds;
+      render();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ focusDuration, breakDuration, longBreakDuration, sessionsBeforeLong, autoStart }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    render();
+    animFrame = requestAnimationFrame(tick);
+    connectSSE();
+  </script>
+</body>
+</html>

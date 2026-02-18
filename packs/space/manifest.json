@@ -1,0 +1,9 @@
+{
+  "name": "Space",
+  "description": "Deep space scene with parallax starfield and nebula clouds",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌌",
+  "color": "#311b92",
+  "hasBackend": false
+}

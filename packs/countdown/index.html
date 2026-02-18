@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Countdown</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #050505;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', sans-serif;
+    }
+    .bg-gradient {
+      position: fixed; inset: 0; z-index: 0; opacity: 0.4;
+      background: radial-gradient(ellipse at 30% 40%, var(--accent-dim) 0%, transparent 60%),
+                  radial-gradient(ellipse at 70% 60%, var(--accent-dim2) 0%, transparent 60%);
+      animation: bgShift 20s ease-in-out infinite alternate;
+    }
+    @keyframes bgShift {
+      0%   { transform: scale(1) rotate(0deg); opacity: 0.3; }
+      50%  { transform: scale(1.1) rotate(1deg); opacity: 0.5; }
+      100% { transform: scale(1) rotate(-1deg); opacity: 0.3; }
+    }
+    :root {
+      --accent: #f44336; --accent-dim: rgba(244,67,54,0.08); --accent-dim2: rgba(255,100,80,0.06);
+    }
+    body.theme-red    { --accent: #f44336; --accent-dim: rgba(244,67,54,0.08); --accent-dim2: rgba(255,100,80,0.06); }
+    body.theme-blue   { --accent: #4fc3f7; --accent-dim: rgba(79,195,247,0.08); --accent-dim2: rgba(100,180,255,0.06); }
+    body.theme-gold   { --accent: #ffd54f; --accent-dim: rgba(255,213,79,0.08); --accent-dim2: rgba(255,183,77,0.06); }
+    body.theme-green  { --accent: #66bb6a; --accent-dim: rgba(76,175,80,0.08); --accent-dim2: rgba(129,199,132,0.06); }
+    body.theme-purple { --accent: #ba68c8; --accent-dim: rgba(186,104,200,0.08); --accent-dim2: rgba(149,117,205,0.06); }
+
+    .countdown-wrapper {
+      position: relative; z-index: 1; text-align: center;
+      animation: fadeUp 0.8s ease-out;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .event-name {
+      font-size: clamp(1.2rem, 3vw, 2.4rem); font-weight: 200;
+      color: #888; letter-spacing: 0.15em; text-transform: uppercase;
+      margin-bottom: 4vh;
+    }
+    .digits-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: clamp(12px, 3vw, 40px);
+    }
+    .unit-group { text-align: center; }
+    .unit-group .cards {
+      display: flex; gap: 6px;
+    }
+    .flip-card {
+      width: clamp(50px, 10vw, 120px); height: clamp(65px, 13vw, 155px);
+      perspective: 600px; position: relative;
+    }
+    .flip-card .face {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, #1a1a1a 0%, #111 49.9%, #0d0d0d 50%, #0a0a0a 100%);
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      font-size: clamp(2rem, 7vw, 5.5rem); font-weight: 200; color: #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+      overflow: hidden;
+    }
+    .flip-card .face::after {
+      content: ''; position: absolute; left: 0; right: 0; top: 50%;
+      height: 1px; background: rgba(0,0,0,0.6);
+    }
+    .flip-card .face .digit-top,
+    .flip-card .face .digit-bottom {
+      position: absolute; left: 0; right: 0; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* Flip animation */
+    .flip-card.flipping .face {
+      animation: flipPulse 0.5s ease-in-out;
+    }
+    @keyframes flipPulse {
+      0%   { transform: rotateX(0deg); }
+      50%  { transform: rotateX(-8deg) scale(0.97); }
+      100% { transform: rotateX(0deg); }
+    }
+    .unit-label {
+      font-size: clamp(0.6rem, 1.2vw, 0.9rem); font-weight: 400;
+      color: #444; text-transform: uppercase; letter-spacing: 0.2em;
+      margin-top: 10px;
+    }
+    .separator {
+      font-size: clamp(2rem, 6vw, 4.5rem); font-weight: 100; color: #333;
+      padding-bottom: 28px;
+      animation: colonPulse 2s ease-in-out infinite;
+    }
+    @keyframes colonPulse { 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
+
+    /* Celebration */
+    .celebrate {
+      display: none; text-align: center; position: relative; z-index: 1;
+      animation: fadeUp 0.8s ease-out;
+    }
+    .celebrate.active { display: block; }
+    .celebrate h1 {
+      font-size: clamp(2rem, 6vw, 5rem); font-weight: 100; color: #fff;
+      margin-bottom: 2vh;
+    }
+    .celebrate p {
+      font-size: clamp(1rem, 2.5vw, 1.6rem); font-weight: 200; color: #666;
+      letter-spacing: 0.1em;
+    }
+    .celebrate .glow {
+      color: var(--accent);
+      text-shadow: 0 0 40px var(--accent), 0 0 80px var(--accent);
+      animation: glowPulse 2s ease-in-out infinite alternate;
+    }
+    @keyframes glowPulse {
+      from { text-shadow: 0 0 20px var(--accent), 0 0 40px var(--accent); }
+      to   { text-shadow: 0 0 60px var(--accent), 0 0 120px var(--accent); }
+    }
+    /* Particles */
+    .particle {
+      position: fixed; width: 4px; height: 4px; border-radius: 50%;
+      background: var(--accent); z-index: 0; pointer-events: none;
+      animation: particleFall linear forwards;
+    }
+    @keyframes particleFall {
+      0%   { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(100vh) scale(0.3); }
+    }
+
+    /* Settings */
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px; width: 36px; height: 36px;
+      background: none; border: none; color: #222; font-size: 22px;
+      cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(15,15,15,0.95); border: 1px solid #222;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 250px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-size: 11px; font-weight: 500; color: #666;
+      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px; color: #999;
+      font-size: 13px; cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+    .settings-panel input[type="text"],
+    .settings-panel input[type="datetime-local"],
+    .settings-panel select {
+      background: #111; color: #999; border: 1px solid #333; border-radius: 6px;
+      padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif;
+      width: 100%; margin-top: 4px;
+    }
+    .setting-group {
+      margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a1a1a;
+    }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px; width: 6px; height: 6px;
+      border-radius: 50%; background: #1a1a1a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body class="theme-red">
+  <div class="bg-gradient"></div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Event Name</h3>
+      <input type="text" id="eventNameInput" value="New Year 2027" onchange="saveSettings()" />
+    </div>
+    <div class="setting-group">
+      <h3>Target Date</h3>
+      <input type="datetime-local" id="targetDateInput" value="2027-01-01T00:00" onchange="saveSettings()" />
+    </div>
+    <div class="setting-group">
+      <h3>Accent Color</h3>
+      <select id="colorSelect" onchange="saveSettings()">
+        <option value="red">Red</option>
+        <option value="blue">Blue</option>
+        <option value="gold">Gold</option>
+        <option value="green">Green</option>
+        <option value="purple">Purple</option>
+      </select>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showSeconds" checked onchange="saveSettings()" /> Show seconds</label>
+    </div>
+  </div>
+
+  <div class="countdown-wrapper" id="countdownWrapper">
+    <div class="event-name" id="eventNameDisplay">New Year 2027</div>
+    <div class="digits-row" id="digitsRow">
+      <div class="unit-group" id="daysGroup">
+        <div class="cards" id="daysCards"></div>
+        <div class="unit-label">Days</div>
+      </div>
+      <div class="separator">:</div>
+      <div class="unit-group">
+        <div class="cards" id="hoursCards"></div>
+        <div class="unit-label">Hours</div>
+      </div>
+      <div class="separator">:</div>
+      <div class="unit-group">
+        <div class="cards" id="minutesCards"></div>
+        <div class="unit-label">Minutes</div>
+      </div>
+      <div class="separator" id="secSeparator">:</div>
+      <div class="unit-group" id="secGroup">
+        <div class="cards" id="secondsCards"></div>
+        <div class="unit-label">Seconds</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="celebrate" id="celebrateEl">
+    <h1 class="glow" id="celebrateTitle">Happy New Year!</h1>
+    <p id="celebrateSub">The countdown has ended</p>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'countdown';
+    let eventName = 'New Year 2027';
+    let targetDate = '2027-01-01T00:00';
+    let accentColor = 'red';
+    let showSeconds = true;
+    let prevValues = { d: '', h: '', m: '', s: '' };
+    let celebrationStarted = false;
+
+    function createCard(containerId, count) {
+      const c = document.getElementById(containerId);
+      c.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        const card = document.createElement('div');
+        card.className = 'flip-card';
+        card.innerHTML = '<div class="face">0</div>';
+        c.appendChild(card);
+      }
+    }
+    function initCards() {
+      createCard('daysCards', 3);
+      createCard('hoursCards', 2);
+      createCard('minutesCards', 2);
+      createCard('secondsCards', 2);
+    }
+    initCards();
+
+    function setDigits(containerId, val, key) {
+      const cards = document.getElementById(containerId).querySelectorAll('.flip-card');
+      const str = String(val).padStart(cards.length, '0');
+      for (let i = 0; i < cards.length; i++) {
+        const face = cards[i].querySelector('.face');
+        if (face.textContent !== str[i]) {
+          cards[i].classList.remove('flipping');
+          void cards[i].offsetWidth;
+          cards[i].classList.add('flipping');
+          face.textContent = str[i];
+        }
+      }
+    }
+
+    function spawnParticles() {
+      for (let i = 0; i < 30; i++) {
+        setTimeout(() => {
+          const p = document.createElement('div');
+          p.className = 'particle';
+          p.style.left = Math.random() * 100 + 'vw';
+          p.style.top = '-10px';
+          p.style.width = p.style.height = (2 + Math.random() * 4) + 'px';
+          p.style.animationDuration = (2 + Math.random() * 3) + 's';
+          p.style.opacity = 0.5 + Math.random() * 0.5;
+          document.body.appendChild(p);
+          setTimeout(() => p.remove(), 5000);
+        }, i * 100);
+      }
+    }
+
+    function updateCountdown() {
+      const target = new Date(targetDate).getTime();
+      const now = Date.now();
+      let diff = target - now;
+
+      if (diff <= 0) {
+        document.getElementById('countdownWrapper').style.display = 'none';
+        const cel = document.getElementById('celebrateEl');
+        cel.classList.add('active');
+        document.getElementById('celebrateTitle').textContent = eventName + '!';
+        if (!celebrationStarted) { celebrationStarted = true; spawnParticles(); setInterval(spawnParticles, 4000); }
+        return;
+      }
+      celebrationStarted = false;
+      document.getElementById('countdownWrapper').style.display = '';
+      document.getElementById('celebrateEl').classList.remove('active');
+
+      const days = Math.floor(diff / 86400000); diff %= 86400000;
+      const hours = Math.floor(diff / 3600000); diff %= 3600000;
+      const minutes = Math.floor(diff / 60000); diff %= 60000;
+      const seconds = Math.floor(diff / 1000);
+
+      setDigits('daysCards', days, 'd');
+      setDigits('hoursCards', hours, 'h');
+      setDigits('minutesCards', minutes, 'm');
+      setDigits('secondsCards', seconds, 's');
+
+      const secVis = showSeconds ? '' : 'none';
+      document.getElementById('secGroup').style.display = secVis;
+      document.getElementById('secSeparator').style.display = secVis;
+    }
+
+    function applyColor() { document.body.className = 'theme-' + accentColor; }
+    function applyEventName() { document.getElementById('eventNameDisplay').textContent = eventName; }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.eventName) eventName = cfg.eventName;
+        if (cfg.targetDate) targetDate = cfg.targetDate;
+        if (cfg.accentColor) accentColor = cfg.accentColor;
+        if (cfg.showSeconds !== undefined) showSeconds = cfg.showSeconds;
+        document.getElementById('eventNameInput').value = eventName;
+        document.getElementById('targetDateInput').value = targetDate;
+        document.getElementById('colorSelect').value = accentColor;
+        document.getElementById('showSeconds').checked = showSeconds;
+      } catch {}
+      applyColor();
+      applyEventName();
+    }
+
+    async function saveSettings() {
+      eventName = document.getElementById('eventNameInput').value || 'Countdown';
+      targetDate = document.getElementById('targetDateInput').value;
+      accentColor = document.getElementById('colorSelect').value;
+      showSeconds = document.getElementById('showSeconds').checked;
+      applyColor();
+      applyEventName();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventName, targetDate, accentColor, showSeconds }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+    connectSSE();
+  </script>
+</body>
+</html>

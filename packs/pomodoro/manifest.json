@@ -1,0 +1,9 @@
+{
+  "name": "Pomodoro",
+  "description": "Focus and break timer with circular progress ring",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🍅",
+  "color": "#e53935",
+  "hasBackend": false
+}

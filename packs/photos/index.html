@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Photos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      overflow: hidden;
+      height: 100vh;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .slide-layer {
+      position: fixed; inset: 0;
+      opacity: 0;
+      transition: opacity 2s ease;
+      will-change: opacity, transform;
+    }
+    .slide-layer.active { opacity: 1; }
+    .slide-layer .slide-inner {
+      width: 100%; height: 100%;
+      animation: none;
+    }
+
+    @keyframes kenburns-1 {
+      0%   { transform: scale(1)   translate(0, 0); }
+      100% { transform: scale(1.15) translate(-2%, -1%); }
+    }
+    @keyframes kenburns-2 {
+      0%   { transform: scale(1.1) translate(-1%, 1%); }
+      100% { transform: scale(1)   translate(1%, -1%); }
+    }
+    @keyframes kenburns-3 {
+      0%   { transform: scale(1)   translate(1%, 0); }
+      100% { transform: scale(1.12) translate(-1%, 2%); }
+    }
+    @keyframes kenburns-4 {
+      0%   { transform: scale(1.12) translate(0, -1%); }
+      100% { transform: scale(1)    translate(-2%, 1%); }
+    }
+
+    .slide-layer .slide-inner.kb {
+      animation-duration: 25s;
+      animation-timing-function: ease-in-out;
+      animation-fill-mode: both;
+    }
+
+    .corner-clock {
+      position: fixed; bottom: 30px; left: 40px;
+      pointer-events: none; transition: opacity 0.8s; z-index: 50;
+    }
+    .corner-clock .clock-time {
+      font-size: 42px; font-weight: 100;
+      color: rgba(255,255,255,0.2); letter-spacing: 0.05em;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+    }
+    .corner-clock .clock-date {
+      font-size: 14px; font-weight: 200;
+      color: rgba(255,255,255,0.1); margin-top: 2px;
+      letter-spacing: 0.08em;
+      text-shadow: 0 1px 10px rgba(0,0,0,0.5);
+    }
+    .corner-clock.hidden { opacity: 0; }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      width: 36px; height: 36px; background: none; border: none;
+      color: #1a1a1a; font-size: 22px; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,10,15,0.95); border: 1px solid #222;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 240px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-size: 11px; font-weight: 400;
+      color: #555; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #888; font-size: 13px; cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #111; color: #888; border: 1px solid #2a2a2a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #4fc3f7; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #151515; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 6px; height: 6px; border-radius: 50%; background: #0a0a0a; z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Interval</h3>
+      <label>
+        <select id="intervalSelect" onchange="saveSettings()">
+          <option value="10">10 seconds</option>
+          <option value="20" selected>20 seconds</option>
+          <option value="30">30 seconds</option>
+          <option value="60">60 seconds</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Transition</h3>
+      <label>
+        <select id="transitionSelect" onchange="saveSettings()">
+          <option value="fade" selected>Fade</option>
+          <option value="zoom">Zoom</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Palette</h3>
+      <label>
+        <select id="paletteSelect" onchange="saveSettings()">
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="neon">Neon</option>
+          <option value="pastel">Pastel</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlays</h3>
+      <label><input type="checkbox" id="showClock" checked onchange="saveSettings()" /> Corner clock</label>
+    </div>
+  </div>
+
+  <div class="slide-layer" id="layerA"><div class="slide-inner"></div></div>
+  <div class="slide-layer" id="layerB"><div class="slide-inner"></div></div>
+
+  <div class="corner-clock" id="cornerClock">
+    <div class="clock-time" id="clockTime"></div>
+    <div class="clock-date" id="clockDate"></div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'photos';
+
+    let interval = 20;
+    let transition = 'fade';
+    let showClock = true;
+    let palette = 'warm';
+    let currentSlide = 0;
+    let activeLayer = 'A';
+    let slideTimer = null;
+    let kbIndex = 0;
+
+    const palettes = {
+      warm: [
+        ['#ff6b35','#f7c59f','#d62828','#fcbf49','#eae2b7'],
+        ['#e76f51','#f4a261','#e9c46a','#2a9d8f','#264653'],
+        ['#d00000','#dc2f02','#e85d04','#f48c06','#faa307'],
+        ['#ff595e','#ff924c','#ffca3a','#c5ca30','#8ac926'],
+        ['#9b2226','#ae2012','#bb3e03','#ca6702','#ee9b00'],
+        ['#ffb703','#fb8500','#e63946','#a8dadc','#457b9d'],
+        ['#ff6d00','#ff8500','#ff9100','#ff9e00','#240046'],
+        ['#ff7b00','#ff8800','#ff9500','#ffa200','#582f0e'],
+      ],
+      cool: [
+        ['#03045e','#023e8a','#0077b6','#0096c7','#00b4d8'],
+        ['#184e77','#1e6091','#1a759f','#168aad','#34a0a4'],
+        ['#2d00f7','#6a00f4','#8900f2','#a100f2','#b100e8'],
+        ['#7400b8','#6930c3','#5e60ce','#5390d9','#4ea8de'],
+        ['#10002b','#240046','#3c096c','#5a189a','#7b2cbf'],
+        ['#012a4a','#013a63','#01497c','#014f86','#2a6f97'],
+        ['#0b090a','#161a1d','#1a2744','#2b4570','#3a86c7'],
+        ['#005f73','#0a9396','#94d2bd','#e9d8a6','#ee9b00'],
+      ],
+      neon: [
+        ['#ff006e','#8338ec','#3a86ff','#fb5607','#ffbe0b'],
+        ['#f72585','#b5179e','#7209b7','#560bad','#480ca8'],
+        ['#00f5d4','#00bbf9','#fee440','#f15bb5','#9b5de5'],
+        ['#ff0a54','#ff477e','#ff5c8a','#ff7096','#ff85a1'],
+        ['#70d6ff','#ff70a6','#ff9770','#ffd670','#e9ff70'],
+        ['#ff595e','#1982c4','#6a4c93','#ffca3a','#8ac926'],
+        ['#f20089','#cc00ff','#6600ff','#0033ff','#00ccff'],
+        ['#39ff14','#ff3131','#ff00ff','#00ffff','#ffff00'],
+      ],
+      pastel: [
+        ['#fec5bb','#fcd5ce','#fae1dd','#f8edeb','#e8e8e4'],
+        ['#d8e2dc','#ece4db','#ffe5d9','#ffd7ba','#fec89a'],
+        ['#eae4e9','#fff1e6','#fde2e4','#fad2e1','#e2ece9'],
+        ['#bee1e6','#cddafd','#dfe7fd','#f0efeb','#fad2e1'],
+        ['#f1c0e8','#cfbaf0','#a3c4f3','#90dbf4','#8eecf5'],
+        ['#ffcdb2','#ffb4a2','#e5989b','#b5838d','#6d6875'],
+        ['#cdb4db','#ffc8dd','#ffafcc','#bde0fe','#a2d2ff'],
+        ['#fbf8cc','#fde4cf','#ffcfd2','#f1c0e8','#cfbaf0'],
+      ],
+    };
+
+    const gradientTypes = [
+      (c) => `linear-gradient(135deg, ${c[0]} 0%, ${c[1]} 25%, ${c[2]} 50%, ${c[3]} 75%, ${c[4]} 100%)`,
+      (c) => `radial-gradient(ellipse at 30% 40%, ${c[0]}, ${c[1]} 30%, ${c[2]} 60%, ${c[3]} 100%)`,
+      (c) => `radial-gradient(circle at 70% 60%, ${c[0]}, ${c[2]} 40%, ${c[4]} 100%)`,
+      (c) => `linear-gradient(45deg, ${c[0]} 0%, ${c[2]} 50%, ${c[4]} 100%), radial-gradient(ellipse at 20% 80%, ${c[1]}cc, transparent 60%)`,
+      (c) => `conic-gradient(from 45deg at 50% 50%, ${c[0]}, ${c[1]}, ${c[2]}, ${c[3]}, ${c[4]}, ${c[0]})`,
+      (c) => `linear-gradient(180deg, ${c[0]} 0%, ${c[1]} 30%, ${c[2]} 60%, ${c[3]} 100%), radial-gradient(circle at 80% 20%, ${c[4]}aa, transparent 50%)`,
+      (c) => `radial-gradient(ellipse at 50% 0%, ${c[0]} 0%, transparent 60%), radial-gradient(ellipse at 50% 100%, ${c[4]} 0%, transparent 60%), linear-gradient(90deg, ${c[1]}, ${c[2]}, ${c[3]})`,
+      (c) => `conic-gradient(from 180deg at 30% 70%, ${c[0]}, ${c[1]}, ${c[2]}, ${c[3]}, ${c[4]}, ${c[0]}), radial-gradient(circle at 70% 30%, ${c[2]}88, transparent 50%)`,
+    ];
+
+    function getSlideBackground(index) {
+      const colors = palettes[palette][index % palettes[palette].length];
+      const gradFn = gradientTypes[index % gradientTypes.length];
+      return gradFn(colors);
+    }
+
+    function applySlide(layerId, slideIndex) {
+      const layer = document.getElementById('layer' + layerId);
+      const inner = layer.querySelector('.slide-inner');
+      inner.style.background = getSlideBackground(slideIndex);
+      inner.className = 'slide-inner';
+      void inner.offsetWidth;
+      kbIndex = (kbIndex % 4) + 1;
+      inner.classList.add('kb');
+      inner.style.animationName = 'kenburns-' + kbIndex;
+      inner.style.animationDuration = (interval + 2) + 's';
+
+      if (transition === 'zoom') {
+        layer.style.transition = 'opacity 1.5s ease, transform 1.5s ease';
+        layer.style.transform = layer.classList.contains('active') ? 'scale(1)' : 'scale(1.05)';
+      } else {
+        layer.style.transition = 'opacity 2s ease';
+        layer.style.transform = 'scale(1)';
+      }
+    }
+
+    function advanceSlide() {
+      currentSlide = (currentSlide + 1) % 8;
+      const nextLayer = activeLayer === 'A' ? 'B' : 'A';
+      const prevLayer = activeLayer;
+
+      applySlide(nextLayer, currentSlide);
+
+      const nextEl = document.getElementById('layer' + nextLayer);
+      const prevEl = document.getElementById('layer' + prevLayer);
+
+      nextEl.classList.add('active');
+      prevEl.classList.remove('active');
+
+      if (transition === 'zoom') {
+        prevEl.style.transform = 'scale(0.95)';
+      }
+
+      activeLayer = nextLayer;
+    }
+
+    function startSlideshow() {
+      if (slideTimer) clearInterval(slideTimer);
+      applySlide('A', currentSlide);
+      document.getElementById('layerA').classList.add('active');
+      document.getElementById('layerB').classList.remove('active');
+      activeLayer = 'A';
+      slideTimer = setInterval(advanceSlide, interval * 1000);
+    }
+
+    // Corner clock
+    function updateCornerClock() {
+      const el = document.getElementById('cornerClock');
+      el.className = showClock ? 'corner-clock' : 'corner-clock hidden';
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.interval) interval = parseInt(cfg.interval);
+        if (cfg.transition) transition = cfg.transition;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        if (cfg.palette) palette = cfg.palette;
+        document.getElementById('intervalSelect').value = interval;
+        document.getElementById('transitionSelect').value = transition;
+        document.getElementById('showClock').checked = showClock;
+        document.getElementById('paletteSelect').value = palette;
+      } catch {}
+      startSlideshow();
+      updateCornerClock();
+    }
+
+    async function saveSettings() {
+      interval = parseInt(document.getElementById('intervalSelect').value);
+      transition = document.getElementById('transitionSelect').value;
+      showClock = document.getElementById('showClock').checked;
+      palette = document.getElementById('paletteSelect').value;
+      updateCornerClock();
+      startSlideshow();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ interval, transition, showClock, palette }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateCornerClock, 30000);
+    connectSSE();
+  </script>
+</body>
+</html>

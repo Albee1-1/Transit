@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Typewriter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&family=JetBrains+Mono:wght@200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0806; overflow: hidden; height: 100vh; user-select: none;
+           display: flex; align-items: center; justify-content: center; }
+
+    .quote-container {
+      max-width: 75vw; text-align: center; padding: 40px; position: relative; z-index: 2;
+    }
+    .quote-text {
+      font-family: 'JetBrains Mono', monospace; font-size: 3vw; font-weight: 300;
+      color: rgba(200,180,150,0.7); line-height: 1.6; letter-spacing: 0.02em;
+      min-height: 3em;
+    }
+    .cursor {
+      display: inline-block; width: 2px; height: 1.1em;
+      background: rgba(200,180,150,0.6);
+      animation: blink 0.8s ease infinite; vertical-align: text-bottom;
+      margin-left: 2px;
+    }
+    .quote-author {
+      font-family: 'Inter', sans-serif; font-size: 1.5vw; font-weight: 200;
+      color: rgba(200,180,150,0.2); margin-top: 3vh;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      opacity: 0; transition: opacity 1s;
+    }
+    .quote-author.visible { opacity: 1; }
+
+    /* Paper texture overlay */
+    .texture {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+      background: radial-gradient(ellipse at 50% 50%, rgba(20,16,10,0.2) 0%, rgba(10,8,6,0.8) 80%);
+      pointer-events: none;
+    }
+
+    @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #1a1610; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(10,8,6,0.95); border: 1px solid #2a2418; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 240px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #5a4a2a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #aa8855; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #0c0a06; color: #aa8855; border: 1px solid #2a2418; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #141008; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #0c0a06; z-index: 20; }
+    .reload-indicator.connected { background: #8d6e63; }
+  </style>
+</head>
+<body>
+  <div class="texture"></div>
+  <div class="quote-container">
+    <div class="quote-text" id="quoteText"><span class="cursor"></span></div>
+    <div class="quote-author" id="quoteAuthor"></div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Category</h3>
+      <label><select id="category" onchange="saveSettings()">
+        <option value="wisdom">Wisdom</option>
+        <option value="literature">Literature</option>
+        <option value="science">Science</option>
+        <option value="philosophy">Philosophy</option>
+        <option value="humor">Humor</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Typing Speed</h3>
+      <label><select id="speed" onchange="saveSettings()">
+        <option value="slow">Slow</option>
+        <option value="normal" selected>Normal</option>
+        <option value="fast">Fast</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'typewriter';
+
+    let category = 'wisdom';
+    let speed = 'normal';
+
+    const SPEED_MAP = { slow: 90, normal: 55, fast: 25 };
+
+    const QUOTES = {
+      wisdom: [
+        { text: "The only true wisdom is in knowing you know nothing.", author: "Socrates" },
+        { text: "In the middle of difficulty lies opportunity.", author: "Albert Einstein" },
+        { text: "The journey of a thousand miles begins with a single step.", author: "Lao Tzu" },
+        { text: "What we think, we become.", author: "Buddha" },
+        { text: "The unexamined life is not worth living.", author: "Socrates" },
+        { text: "Knowing yourself is the beginning of all wisdom.", author: "Aristotle" },
+        { text: "Turn your wounds into wisdom.", author: "Oprah Winfrey" },
+        { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
+      ],
+      literature: [
+        { text: "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.", author: "Jane Austen" },
+        { text: "All that is gold does not glitter, not all those who wander are lost.", author: "J.R.R. Tolkien" },
+        { text: "It was the best of times, it was the worst of times.", author: "Charles Dickens" },
+        { text: "So we beat on, boats against the current, borne back ceaselessly into the past.", author: "F. Scott Fitzgerald" },
+        { text: "Not all those who wander are lost.", author: "J.R.R. Tolkien" },
+        { text: "Whatever our souls are made of, his and mine are the same.", author: "Emily Brontë" },
+      ],
+      science: [
+        { text: "Imagination is more important than knowledge.", author: "Albert Einstein" },
+        { text: "The good thing about science is that it's true whether or not you believe in it.", author: "Neil deGrasse Tyson" },
+        { text: "Somewhere, something incredible is waiting to be known.", author: "Carl Sagan" },
+        { text: "The important thing is not to stop questioning. Curiosity has its own reason for existing.", author: "Albert Einstein" },
+        { text: "We are a way for the cosmos to know itself.", author: "Carl Sagan" },
+        { text: "Nothing in life is to be feared, it is only to be understood.", author: "Marie Curie" },
+      ],
+      philosophy: [
+        { text: "I think, therefore I am.", author: "René Descartes" },
+        { text: "He who has a why to live can bear almost any how.", author: "Friedrich Nietzsche" },
+        { text: "The mind is everything. What you think you become.", author: "Buddha" },
+        { text: "Man is condemned to be free.", author: "Jean-Paul Sartre" },
+        { text: "One cannot step twice in the same river.", author: "Heraclitus" },
+        { text: "Happiness is the highest good.", author: "Aristotle" },
+      ],
+      humor: [
+        { text: "I'm not superstitious, but I am a little stitious.", author: "Michael Scott" },
+        { text: "Before you criticize someone, walk a mile in their shoes. Then you're a mile away and you have their shoes.", author: "Jack Handey" },
+        { text: "I used to think I was indecisive, but now I'm not so sure.", author: "Unknown" },
+        { text: "The only mystery in life is why the kamikaze pilots wore helmets.", author: "Al McGuire" },
+        { text: "A day without sunshine is like, you know, night.", author: "Steve Martin" },
+      ],
+    };
+
+    let currentQuote = 0;
+    let charIndex = 0;
+    let isTyping = false;
+    let typingTimer = null;
+
+    function getQuotes() { return QUOTES[category] || QUOTES.wisdom; }
+
+    function startTyping() {
+      const quotes = getQuotes();
+      const quote = quotes[currentQuote % quotes.length];
+      charIndex = 0;
+      isTyping = true;
+
+      document.getElementById('quoteAuthor').classList.remove('visible');
+      document.getElementById('quoteAuthor').textContent = `— ${quote.author}`;
+
+      const interval = SPEED_MAP[speed] || 55;
+
+      function typeChar() {
+        if (charIndex <= quote.text.length) {
+          document.getElementById('quoteText').innerHTML =
+            quote.text.substring(0, charIndex) + '<span class="cursor"></span>';
+          charIndex++;
+
+          // Variable speed for natural feel
+          const char = quote.text[charIndex - 1];
+          let delay = interval;
+          if (char === '.' || char === '!' || char === '?') delay = interval * 6;
+          else if (char === ',') delay = interval * 3;
+          else if (char === ' ') delay = interval * 0.5;
+          else delay = interval + (Math.random() - 0.5) * interval * 0.5;
+
+          typingTimer = setTimeout(typeChar, delay);
+        } else {
+          // Done typing - show author
+          isTyping = false;
+          document.getElementById('quoteAuthor').classList.add('visible');
+
+          // Wait then start next quote
+          typingTimer = setTimeout(() => {
+            // Fade out effect
+            document.getElementById('quoteText').style.transition = 'opacity 1s';
+            document.getElementById('quoteText').style.opacity = '0';
+            document.getElementById('quoteAuthor').classList.remove('visible');
+
+            setTimeout(() => {
+              document.getElementById('quoteText').style.opacity = '1';
+              currentQuote++;
+              startTyping();
+            }, 1500);
+          }, 5000);
+        }
+      }
+
+      typeChar();
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.category) category = cfg.category;
+        if (cfg.speed) speed = cfg.speed;
+        document.getElementById('category').value = category;
+        document.getElementById('speed').value = speed;
+      } catch {}
+      currentQuote = Math.floor(Math.random() * getQuotes().length);
+      startTyping();
+    }
+    async function saveSettings() {
+      category = document.getElementById('category').value;
+      speed = document.getElementById('speed').value;
+      clearTimeout(typingTimer);
+      currentQuote = Math.floor(Math.random() * getQuotes().length);
+      startTyping();
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ category, speed }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); connectSSE();
+  </script>
+</body>
+</html>

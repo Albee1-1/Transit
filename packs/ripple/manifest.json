@@ -1,0 +1,9 @@
+{
+  "name": "Ripple",
+  "description": "Concentric ripples expanding across water",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "💧",
+  "color": "#29b6f6",
+  "hasBackend": false
+}

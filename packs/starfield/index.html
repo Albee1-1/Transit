@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Starfield</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; pointer-events: none; z-index: 10; transition: opacity 0.5s;
+    }
+    .clock-overlay.hidden { opacity: 0; }
+    .clock-overlay .time {
+      font-family: 'Inter', sans-serif; font-size: 14vw; font-weight: 100;
+      color: rgba(255,255,255,0.06); letter-spacing: 0.08em;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #222;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(5,5,15,0.95); border: 1px solid #1a1a3a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #5555aa; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #8888cc; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #08081a; color: #8888cc; border: 1px solid #1a1a3a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #aa88ff; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e0e20; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #aa88ff; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay hidden" id="clockOverlay">
+    <div class="time" id="clockTime"></div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Warp Speed</h3>
+      <label>
+        <select id="speed" onchange="saveSettings()">
+          <option value="cruise">Cruise</option>
+          <option value="warp" selected>Warp</option>
+          <option value="hyperspace">Hyperspace</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Star Color</h3>
+      <label>
+        <select id="colorMode" onchange="saveSettings()">
+          <option value="white">Classic White</option>
+          <option value="blue">Blue Shift</option>
+          <option value="rainbow">Rainbow</option>
+          <option value="warm">Warm</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'starfield';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, cx, cy;
+
+    let speed = 'warp';
+    let colorMode = 'white';
+    let showClock = false;
+
+    const SPEED_MAP = { cruise: 2, warp: 6, hyperspace: 15 };
+    const STAR_COUNT = 800;
+
+    let stars = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      cx = W / 2;
+      cy = H / 2;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initStars() {
+      stars = [];
+      for (let i = 0; i < STAR_COUNT; i++) {
+        stars.push(createStar());
+      }
+    }
+
+    function createStar() {
+      return {
+        x: (Math.random() - 0.5) * W * 2,
+        y: (Math.random() - 0.5) * H * 2,
+        z: Math.random() * 1500 + 1,
+        pz: 0,
+        hue: Math.random() * 360,
+      };
+    }
+
+    function getStarColor(star, alpha) {
+      switch (colorMode) {
+        case 'blue':
+          return `rgba(${150 + Math.random() * 50}, ${180 + Math.random() * 40}, 255, ${alpha})`;
+        case 'rainbow':
+          return `hsla(${star.hue}, 80%, 70%, ${alpha})`;
+        case 'warm':
+          return `rgba(255, ${200 + Math.random() * 55}, ${150 + Math.random() * 50}, ${alpha})`;
+        default:
+          return `rgba(255, 255, 255, ${alpha})`;
+      }
+    }
+
+    function animate() {
+      // Slight fade for motion blur
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillRect(0, 0, W, H);
+
+      const spd = SPEED_MAP[speed] || 6;
+
+      for (let i = 0; i < stars.length; i++) {
+        const s = stars[i];
+        s.pz = s.z;
+        s.z -= spd;
+
+        if (s.z <= 0) {
+          s.x = (Math.random() - 0.5) * W * 2;
+          s.y = (Math.random() - 0.5) * H * 2;
+          s.z = 1500;
+          s.pz = 1500;
+          s.hue = Math.random() * 360;
+          continue;
+        }
+
+        // Project to 2D
+        const sx = (s.x / s.z) * 400 + cx;
+        const sy = (s.y / s.z) * 400 + cy;
+        const psx = (s.x / s.pz) * 400 + cx;
+        const psy = (s.y / s.pz) * 400 + cy;
+
+        // Size based on distance
+        const size = Math.max(0.5, (1 - s.z / 1500) * 3);
+        const alpha = Math.min(1, (1 - s.z / 1500) * 1.5);
+
+        // Draw streak
+        ctx.beginPath();
+        ctx.moveTo(psx, psy);
+        ctx.lineTo(sx, sy);
+        ctx.strokeStyle = getStarColor(s, alpha);
+        ctx.lineWidth = size;
+        ctx.stroke();
+
+        // Bright head
+        if (size > 1.5) {
+          ctx.beginPath();
+          ctx.arc(sx, sy, size * 0.5, 0, Math.PI * 2);
+          ctx.fillStyle = getStarColor(s, alpha);
+          ctx.fill();
+        }
+      }
+
+      // Center glow
+      const centerGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80);
+      centerGlow.addColorStop(0, 'rgba(255,255,255,0.02)');
+      centerGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = centerGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 80, 0, Math.PI * 2);
+      ctx.fill();
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clockOverlay');
+      el.className = showClock ? 'clock-overlay' : 'clock-overlay hidden';
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours() % 12 || 12).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.colorMode) colorMode = cfg.colorMode;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('speed').value = speed;
+        document.getElementById('colorMode').value = colorMode;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      initStars();
+      updateClock();
+    }
+
+    async function saveSettings() {
+      speed = document.getElementById('speed').value;
+      colorMode = document.getElementById('colorMode').value;
+      showClock = document.getElementById('showClock').checked;
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ speed, colorMode, showClock }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 30000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>

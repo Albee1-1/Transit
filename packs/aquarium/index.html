@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aquarium</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #020a18;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+    canvas { display: block; width: 100vw; height: 100vh; }
+
+    .clock-overlay {
+      position: fixed; bottom: 30px; right: 30px;
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(255,255,255,0.12); letter-spacing: 0.05em;
+      z-index: 10; display: none;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: rgba(255,255,255,0.02);
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(4,12,30,0.95); border: 1px solid #1a2a44;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #446; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #8899bb; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #0a1428; color: #8899bb; border: 1px solid #1a2a44;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #4488cc; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0e1e38; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a1a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <canvas id="tank"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Fish Count</h3>
+      <label>
+        <select id="fishCountSelect" onchange="saveSettings()">
+          <option value="5">5</option>
+          <option value="10" selected>10</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Bubble Density</h3>
+      <label>
+        <select id="bubbleDensitySelect" onchange="saveSettings()">
+          <option value="few">Few</option>
+          <option value="normal" selected>Normal</option>
+          <option value="lots">Lots</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Color Palette</h3>
+      <label>
+        <select id="paletteSelect" onchange="saveSettings()">
+          <option value="tropical" selected>Tropical</option>
+          <option value="goldfish">Goldfish</option>
+          <option value="deep-sea">Deep Sea</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'aquarium';
+    const canvas = document.getElementById('tank');
+    const ctx = canvas.getContext('2d');
+
+    let fishCount = 10;
+    let bubbleDensity = 'normal';
+    let showClock = false;
+    let palette = 'tropical';
+
+    const PALETTES = {
+      tropical: ['#ff6f3c','#ffc93c','#1eb8d1','#e84393','#00b894'],
+      goldfish: ['#ff6b35','#f7931e','#ffcc33','#e85d26','#d4a017'],
+      'deep-sea': ['#0abde3','#6c5ce7','#00cec9','#a29bfe','#74b9ff']
+    };
+
+    let fishes = [];
+    let bubbles = [];
+    let seaweeds = [];
+    let lightRays = [];
+    let W, H;
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', () => { resize(); initScene(); });
+    resize();
+
+    function initScene() {
+      const colors = PALETTES[palette] || PALETTES.tropical;
+      fishes = [];
+      for (let i = 0; i < fishCount; i++) {
+        fishes.push(createFish(colors));
+      }
+      seaweeds = [];
+      const swCount = 3 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < swCount; i++) {
+        seaweeds.push({
+          x: W * 0.1 + Math.random() * W * 0.8,
+          height: H * 0.12 + Math.random() * H * 0.18,
+          segments: 8 + Math.floor(Math.random() * 5),
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.3 + Math.random() * 0.4,
+          width: 6 + Math.random() * 8,
+          color: `hsl(${120 + Math.random()*40}, ${50+Math.random()*20}%, ${20+Math.random()*15}%)`
+        });
+      }
+      lightRays = [];
+      for (let i = 0; i < 5; i++) {
+        lightRays.push({
+          x: W * 0.1 + Math.random() * W * 0.8,
+          width: 40 + Math.random() * 80,
+          alpha: 0.02 + Math.random() * 0.03,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.15 + Math.random() * 0.2
+        });
+      }
+      initBubbles();
+    }
+
+    function initBubbles() {
+      const count = bubbleDensity === 'few' ? 12 : bubbleDensity === 'lots' ? 50 : 25;
+      bubbles = [];
+      for (let i = 0; i < count; i++) {
+        bubbles.push(createBubble(true));
+      }
+    }
+
+    function createBubble(randomY) {
+      return {
+        x: Math.random() * W,
+        y: randomY ? Math.random() * H : H + Math.random() * 20,
+        r: 1 + Math.random() * 3.5,
+        speed: 0.3 + Math.random() * 0.7,
+        wobblePhase: Math.random() * Math.PI * 2,
+        wobbleSpeed: 1 + Math.random() * 2,
+        wobbleAmp: 0.3 + Math.random() * 0.8
+      };
+    }
+
+    function createFish(colors) {
+      const size = 18 + Math.random() * 28;
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      return {
+        x: Math.random() * W,
+        y: H * 0.15 + Math.random() * H * 0.6,
+        size: size,
+        speed: 0.5 + Math.random() * 1.2,
+        dir: dir,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        wobblePhase: Math.random() * Math.PI * 2,
+        wobbleAmp: 1 + Math.random() * 2,
+        wobbleSpeed: 0.8 + Math.random() * 1.5,
+        tailPhase: Math.random() * Math.PI * 2,
+        targetY: H * 0.15 + Math.random() * H * 0.6,
+        yTimer: Math.random() * 300
+      };
+    }
+
+    function drawBackground() {
+      const grad = ctx.createLinearGradient(0, 0, 0, H);
+      grad.addColorStop(0, '#0a2a4a');
+      grad.addColorStop(0.6, '#061830');
+      grad.addColorStop(1, '#020c1a');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function drawSand() {
+      const sandH = H * 0.08;
+      const grad = ctx.createLinearGradient(0, H - sandH, 0, H);
+      grad.addColorStop(0, '#3d2e1a');
+      grad.addColorStop(0.3, '#5a4530');
+      grad.addColorStop(1, '#4a3828');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 30) {
+        ctx.lineTo(x, H - sandH + Math.sin(x * 0.02) * 4);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawLightRays(t) {
+      ctx.save();
+      for (const ray of lightRays) {
+        const sway = Math.sin(t * ray.speed + ray.phase) * 30;
+        const x = ray.x + sway;
+        ctx.beginPath();
+        ctx.moveTo(x - ray.width * 0.3, 0);
+        ctx.lineTo(x + ray.width * 0.3, 0);
+        ctx.lineTo(x + ray.width * 0.8 + sway * 0.5, H);
+        ctx.lineTo(x - ray.width * 0.4 + sway * 0.5, H);
+        ctx.closePath();
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, `rgba(120,180,220,${ray.alpha})`);
+        g.addColorStop(1, 'rgba(120,180,220,0)');
+        ctx.fillStyle = g;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawSeaweed(t) {
+      for (const sw of seaweeds) {
+        ctx.save();
+        ctx.strokeStyle = sw.color;
+        ctx.lineWidth = sw.width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        const baseY = H - H * 0.06;
+        ctx.moveTo(sw.x, baseY);
+        for (let i = 1; i <= sw.segments; i++) {
+          const frac = i / sw.segments;
+          const yy = baseY - sw.height * frac;
+          const sway = Math.sin(t * sw.speed + sw.phase + frac * 3) * (12 * frac);
+          ctx.lineTo(sw.x + sway, yy);
+        }
+        ctx.stroke();
+        ctx.lineWidth = sw.width * 0.5;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(sw.x, baseY);
+        for (let i = 1; i <= sw.segments; i++) {
+          const frac = i / sw.segments;
+          const yy = baseY - sw.height * frac * 0.7;
+          const sway = Math.sin(t * sw.speed * 0.8 + sw.phase + 1 + frac * 2.5) * (8 * frac);
+          ctx.lineTo(sw.x + 5 + sway, yy);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawBubbles(t) {
+      for (const b of bubbles) {
+        const wx = Math.sin(t * b.wobbleSpeed + b.wobblePhase) * b.wobbleAmp;
+        ctx.beginPath();
+        ctx.arc(b.x + wx, b.y, b.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(150,210,255,${0.08 + b.r * 0.02})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(180,230,255,${0.1 + b.r * 0.03})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+        // highlight
+        ctx.beginPath();
+        ctx.arc(b.x + wx - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.25, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(220,240,255,${0.15 + b.r * 0.03})`;
+        ctx.fill();
+      }
+    }
+
+    function updateBubbles(dt) {
+      for (let i = 0; i < bubbles.length; i++) {
+        bubbles[i].y -= bubbles[i].speed * dt * 30;
+        if (bubbles[i].y < -10) {
+          bubbles[i] = createBubble(false);
+        }
+      }
+    }
+
+    function drawFish(fish, t) {
+      ctx.save();
+      ctx.translate(fish.x, fish.y);
+      ctx.scale(fish.dir, 1);
+
+      const s = fish.size;
+      const tailWag = Math.sin(t * 6 + fish.tailPhase) * 0.3;
+
+      // tail
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.5, 0);
+      ctx.lineTo(-s * 0.9, -s * 0.3 + tailWag * s * 0.2);
+      ctx.lineTo(-s * 0.9, s * 0.3 + tailWag * s * 0.2);
+      ctx.closePath();
+      ctx.fillStyle = fish.color;
+      ctx.globalAlpha = 0.8;
+      ctx.fill();
+
+      // body
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.55, s * 0.28, 0, 0, Math.PI * 2);
+      ctx.fillStyle = fish.color;
+      ctx.fill();
+
+      // belly highlight
+      ctx.beginPath();
+      ctx.ellipse(s * 0.05, s * 0.06, s * 0.35, s * 0.13, 0, 0, Math.PI);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fill();
+
+      // dorsal fin
+      ctx.beginPath();
+      ctx.moveTo(-s * 0.1, -s * 0.25);
+      ctx.quadraticCurveTo(s * 0.05, -s * 0.45, s * 0.2, -s * 0.25);
+      ctx.fillStyle = fish.color;
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+
+      // eye
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(s * 0.28, -s * 0.05, s * 0.06, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(s * 0.3, -s * 0.05, s * 0.03, 0, Math.PI * 2);
+      ctx.fillStyle = '#111';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function updateFish(dt, t) {
+      for (const f of fishes) {
+        f.x += f.speed * f.dir * dt * 60;
+        f.wobblePhase += f.wobbleSpeed * dt;
+        f.y += Math.sin(f.wobblePhase) * f.wobbleAmp * dt * 10;
+
+        // gentle vertical drift toward target
+        f.yTimer -= dt * 60;
+        if (f.yTimer <= 0) {
+          f.targetY = H * 0.12 + Math.random() * H * 0.6;
+          f.yTimer = 200 + Math.random() * 300;
+        }
+        const yDiff = f.targetY - f.y;
+        f.y += yDiff * 0.003;
+
+        // keep in bounds vertically
+        f.y = Math.max(H * 0.08, Math.min(H * 0.85, f.y));
+
+        // reverse at edges with margin
+        const margin = f.size * 2;
+        if (f.dir === 1 && f.x > W + margin) { f.dir = -1; }
+        if (f.dir === -1 && f.x < -margin) { f.dir = 1; }
+      }
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      const h = now.getHours() % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      el.textContent = `${h}:${m}`;
+    }
+
+    let lastTime = 0;
+    function animate(ts) {
+      const t = ts * 0.001;
+      const dt = Math.min((ts - lastTime) * 0.001, 0.05);
+      lastTime = ts;
+
+      drawBackground();
+      drawLightRays(t);
+      drawSand();
+      drawSeaweed(t);
+      updateBubbles(dt);
+      drawBubbles(t);
+      updateFish(dt, t);
+      for (const f of fishes) drawFish(f, t);
+
+      requestAnimationFrame(animate);
+    }
+
+    // --- Settings & SSE ---
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.fishCount) fishCount = cfg.fishCount;
+        if (cfg.bubbleDensity) bubbleDensity = cfg.bubbleDensity;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        if (cfg.palette) palette = cfg.palette;
+        document.getElementById('fishCountSelect').value = fishCount;
+        document.getElementById('bubbleDensitySelect').value = bubbleDensity;
+        document.getElementById('showClock').checked = showClock;
+        document.getElementById('paletteSelect').value = palette;
+      } catch {}
+      updateClock();
+      initScene();
+    }
+
+    async function saveSettings() {
+      fishCount = parseInt(document.getElementById('fishCountSelect').value);
+      bubbleDensity = document.getElementById('bubbleDensitySelect').value;
+      showClock = document.getElementById('showClock').checked;
+      palette = document.getElementById('paletteSelect').value;
+      updateClock();
+      initScene();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fishCount, bubbleDensity, showClock, palette }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 30000);
+    connectSSE();
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

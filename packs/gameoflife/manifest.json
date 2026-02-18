@@ -1,0 +1,9 @@
+{
+  "name": "Game of Life",
+  "description": "Conway's cellular automaton evolving in real time",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🦠",
+  "color": "#66bb6a",
+  "hasBackend": false
+}

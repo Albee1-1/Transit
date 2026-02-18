@@ -131,6 +131,13 @@ app.use(createProxyMiddleware({
   },
 }));
 
+// ── Cleanup service worker ────────────────────────────────────
+app.get('/sw.js', (_req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'sw.js'));
+});
+
 // ── Admin page ───────────────────────────────────────────────
 app.use('/admin', express.static(ADMIN_DIR));
 
@@ -171,6 +178,9 @@ iframe{width:100%;height:100%;border:none;display:none}
       return caches.keys();
     }).then(function(keys){
       return Promise.all(keys.map(function(k){ return caches.delete(k); }));
+    }).then(function(){
+      // Register a no-op SW to replace any stale ones that might reinstall
+      return navigator.serviceWorker.register('/sw.js', {scope: '/'});
     }).catch(function(){});
   }
 

@@ -1,0 +1,9 @@
+{
+  "name": "Fireplace",
+  "description": "Cozy crackling fireplace with ember glow",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🔥",
+  "color": "#ff6b35",
+  "hasBackend": false
+}

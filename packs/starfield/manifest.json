@@ -1,0 +1,9 @@
+{
+  "name": "Starfield",
+  "description": "Classic warp speed star tunnel effect",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "✨",
+  "color": "#e8d5f5",
+  "hasBackend": false
+}

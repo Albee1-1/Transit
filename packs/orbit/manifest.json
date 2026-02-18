@@ -1,0 +1,9 @@
+{
+  "name": "Orbit",
+  "description": "Miniature solar system with orbiting planets",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🪐",
+  "color": "#ffab40",
+  "hasBackend": false
+}

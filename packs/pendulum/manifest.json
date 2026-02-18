@@ -1,0 +1,9 @@
+{
+  "name": "Pendulum",
+  "description": "Hypnotic pendulum wave with glowing trails",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🕰️",
+  "color": "#ffd54f",
+  "hasBackend": false
+}

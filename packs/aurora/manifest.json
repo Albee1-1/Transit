@@ -1,0 +1,9 @@
+{
+  "name": "Aurora",
+  "description": "Northern lights dancing across the sky",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🌌",
+  "color": "#00d4aa",
+  "hasBackend": false
+}

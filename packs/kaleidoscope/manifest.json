@@ -1,0 +1,9 @@
+{
+  "name": "Kaleidoscope",
+  "description": "Generative kaleidoscope patterns in motion",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "🔮",
+  "color": "#c471ed",
+  "hasBackend": false
+}

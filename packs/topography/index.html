@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Topography</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #060a08; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+    .settings-btn { position: fixed; top: 16px; right: 16px; background: none; border: none; color: #0a2a1a; font-size: 22px; cursor: pointer; opacity: 0; transition: opacity 0.3s; z-index: 100; }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel { position: fixed; top: 60px; right: 16px; background: rgba(6,10,8,0.95); border: 1px solid #1a3a2a; border-radius: 12px; padding: 20px; display: none; z-index: 100; min-width: 220px; backdrop-filter: blur(20px); }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400; color: #1a6a5a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+    .settings-panel label { display: flex; align-items: center; gap: 10px; color: #4aaa8a; font-family: 'Inter', sans-serif; font-size: 13px; cursor: pointer; padding: 6px 0; }
+    .settings-panel select { background: #060e0a; color: #4aaa8a; border: 1px solid #1a3a2a; border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #0c1a14; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .reload-indicator { position: fixed; bottom: 8px; left: 8px; width: 5px; height: 5px; border-radius: 50%; background: #060e0a; z-index: 20; }
+    .reload-indicator.connected { background: #26a69a; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Color Scheme</h3>
+      <label><select id="colorScheme" onchange="saveSettings()">
+        <option value="teal">Teal</option>
+        <option value="amber">Amber</option>
+        <option value="rose">Rose</option>
+        <option value="mono">Monochrome</option>
+      </select></label>
+    </div>
+    <div class="setting-group">
+      <h3>Density</h3>
+      <label><select id="density" onchange="saveSettings()">
+        <option value="sparse">Sparse</option>
+        <option value="normal" selected>Normal</option>
+        <option value="dense">Dense</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'topography';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H;
+
+    let colorScheme = 'teal';
+    let density = 'normal';
+
+    const SCHEMES = {
+      teal:  { line: [0,150,136], bg: [6,10,8] },
+      amber: { line: [255,160,0], bg: [10,8,4] },
+      rose:  { line: [233,30,99], bg: [10,4,6] },
+      mono:  { line: [200,200,200], bg: [8,8,8] },
+    };
+    const DENSITY_MAP = { sparse: 16, normal: 10, dense: 6 };
+
+    function resize() { W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Simplex-like noise using sin combinations
+    function noise(x, y, t) {
+      return (
+        Math.sin(x * 0.008 + t * 0.2) * 0.5 +
+        Math.sin(y * 0.006 + t * 0.15) * 0.5 +
+        Math.sin((x + y) * 0.005 + t * 0.1) * 0.4 +
+        Math.sin(Math.sqrt(x * x * 0.00001 + y * y * 0.00001) * 3 - t * 0.3) * 0.6 +
+        Math.sin(x * 0.015 + y * 0.01 + t * 0.25) * 0.3
+      ) / 2.3;
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+      const pal = SCHEMES[colorScheme] || SCHEMES.teal;
+      const step = DENSITY_MAP[density] || 10;
+      const levels = 12;
+
+      ctx.fillStyle = `rgb(${pal.bg[0]},${pal.bg[1]},${pal.bg[2]})`;
+      ctx.fillRect(0, 0, W, H);
+
+      // Compute height field
+      const cols = Math.ceil(W / step) + 1;
+      const rows = Math.ceil(H / step) + 1;
+      const field = new Float32Array(cols * rows);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          field[r * cols + c] = noise(c * step, r * step, t);
+        }
+      }
+
+      // Marching squares for each contour level
+      for (let lev = 0; lev < levels; lev++) {
+        const threshold = -1 + (lev / levels) * 2;
+        const alpha = 0.06 + (lev / levels) * 0.12;
+        ctx.strokeStyle = `rgba(${pal.line[0]},${pal.line[1]},${pal.line[2]},${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+
+        for (let r = 0; r < rows - 1; r++) {
+          for (let c = 0; c < cols - 1; c++) {
+            const tl = field[r * cols + c];
+            const tr = field[r * cols + c + 1];
+            const bl = field[(r + 1) * cols + c];
+            const br = field[(r + 1) * cols + c + 1];
+
+            const x = c * step;
+            const y = r * step;
+
+            // Simplified marching squares - interpolate edge crossings
+            const edges = [];
+            if ((tl >= threshold) !== (tr >= threshold)) {
+              const f = (threshold - tl) / (tr - tl);
+              edges.push([x + f * step, y]);
+            }
+            if ((tr >= threshold) !== (br >= threshold)) {
+              const f = (threshold - tr) / (br - tr);
+              edges.push([x + step, y + f * step]);
+            }
+            if ((bl >= threshold) !== (br >= threshold)) {
+              const f = (threshold - bl) / (br - bl);
+              edges.push([x + f * step, y + step]);
+            }
+            if ((tl >= threshold) !== (bl >= threshold)) {
+              const f = (threshold - tl) / (bl - tl);
+              edges.push([x, y + f * step]);
+            }
+
+            if (edges.length >= 2) {
+              ctx.moveTo(edges[0][0], edges[0][1]);
+              ctx.lineTo(edges[1][0], edges[1][1]);
+              if (edges.length === 4) {
+                ctx.moveTo(edges[2][0], edges[2][1]);
+                ctx.lineTo(edges[3][0], edges[3][1]);
+              }
+            }
+          }
+        }
+        ctx.stroke();
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.colorScheme) colorScheme = cfg.colorScheme;
+        if (cfg.density) density = cfg.density;
+        document.getElementById('colorScheme').value = colorScheme;
+        document.getElementById('density').value = density;
+      } catch {}
+    }
+    async function saveSettings() {
+      colorScheme = document.getElementById('colorScheme').value;
+      density = document.getElementById('density').value;
+      try { await fetch('/api/config/' + PACK_ID, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ colorScheme, density }) }); } catch {}
+    }
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => { const p = document.getElementById('settingsPanel'); if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open'); });
+    function connectSSE() { const ind = document.getElementById('sseIndicator'); const es = new EventSource('/api/events'); es.onopen = () => ind.classList.add('connected'); es.addEventListener('packChanged', (e) => { const d = JSON.parse(e.data); if (d.activePackId !== PACK_ID) window.location.href = '/'; }); es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); }; }
+    loadSettings(); requestAnimationFrame(animate); connectSSE();
+  </script>
+</body>
+</html>

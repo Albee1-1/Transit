@@ -1,0 +1,9 @@
+{
+  "name": "Lightning",
+  "description": "Thunderstorm with branching lightning bolts",
+  "version": "1.0.0",
+  "author": "sayedmarwan",
+  "icon": "⚡",
+  "color": "#b388ff",
+  "hasBackend": false
+}

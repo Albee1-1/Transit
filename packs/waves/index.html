@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gradient Waves</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #050508;
+      color: #e0e0e0;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .clock-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 5;
+      text-align: center;
+      display: none;
+      pointer-events: none;
+    }
+    .clock-overlay.visible { display: block; }
+
+    .clock-time {
+      font-family: 'Inter', sans-serif;
+      font-size: 12vw;
+      font-weight: 200;
+      color: rgba(255, 255, 255, 0.85);
+      letter-spacing: -0.02em;
+      text-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .clock-date {
+      font-family: 'Inter', sans-serif;
+      font-size: 2vw;
+      font-weight: 300;
+      color: rgba(255, 255, 255, 0.4);
+      letter-spacing: 0.1em;
+      margin-top: 1vh;
+    }
+
+    .settings-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 36px;
+      height: 36px;
+      background: none;
+      border: none;
+      color: #222;
+      font-size: 22px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+
+    .settings-panel {
+      position: fixed;
+      top: 60px;
+      right: 16px;
+      background: rgba(15, 15, 15, 0.95);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px;
+      display: none;
+      z-index: 100;
+      min-width: 220px;
+      backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 12px;
+    }
+
+    .settings-panel label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #999;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+
+    .settings-panel input[type="checkbox"] {
+      accent-color: #4fc3f7;
+      width: 16px;
+      height: 16px;
+    }
+
+    .settings-panel select {
+      background: #111;
+      color: #999;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    .setting-group {
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      z-index: 10;
+    }
+    .reload-indicator.connected { background: #4caf50; }
+  </style>
+</head>
+<body>
+  <canvas id="waveCanvas"></canvas>
+
+  <div class="clock-overlay" id="clockOverlay">
+    <div class="clock-time" id="clockTime">00:00</div>
+    <div class="clock-date" id="clockDate"></div>
+  </div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Waves</h3>
+      <label>
+        Wave Count
+        <select id="waveCountSelect" onchange="saveSettings()">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="7">7</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Speed</h3>
+      <label>
+        <select id="speedSelect" onchange="saveSettings()">
+          <option value="slow">Slow</option>
+          <option value="medium" selected>Medium</option>
+          <option value="fast">Fast</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Palette</h3>
+      <label>
+        <select id="paletteSelect" onchange="saveSettings()">
+          <option value="ocean">Ocean</option>
+          <option value="sunset">Sunset</option>
+          <option value="aurora">Aurora</option>
+          <option value="monochrome">Monochrome</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Overlay</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show Clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'waves';
+    let waveCount = 5;
+    let speed = 'medium';
+    let palette = 'ocean';
+    let showClock = false;
+
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    let W, H;
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    const palettes = {
+      ocean:      [[10, 80, 180], [0, 200, 220], [20, 120, 255], [0, 60, 130]],
+      sunset:     [[220, 60, 40], [255, 140, 50], [200, 40, 100], [255, 90, 20]],
+      aurora:     [[30, 200, 120], [80, 100, 255], [180, 60, 220], [0, 220, 180]],
+      monochrome: [[180, 180, 180], [120, 120, 120], [200, 200, 200], [90, 90, 90]],
+    };
+
+    const speedMap = { slow: 0.0004, medium: 0.001, fast: 0.0025 };
+
+    function hueShift(rgb, shift) {
+      const r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+      if (max === min) { h = 0; s = 0; }
+      else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+      }
+      h = (h + shift) % 1;
+      if (h < 0) h += 1;
+      function hue2rgb(p, q, t) {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      }
+      let rr, gg, bb;
+      if (s === 0) { rr = gg = bb = l; }
+      else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        rr = hue2rgb(p, q, h + 1/3);
+        gg = hue2rgb(p, q, h);
+        bb = hue2rgb(p, q, h - 1/3);
+      }
+      return [Math.round(rr * 255), Math.round(gg * 255), Math.round(bb * 255)];
+    }
+
+    function drawWave(time, index, total) {
+      const pal = palettes[palette] || palettes.ocean;
+      const baseColor = pal[index % pal.length];
+      const hueOffset = (time * 0.00002) % 1;
+      const color = hueShift(baseColor, hueOffset);
+
+      const spd = speedMap[speed] || speedMap.medium;
+      const layerRatio = index / total;
+      const yBase = H * (0.35 + layerRatio * 0.5);
+      const amplitude = H * (0.06 + layerRatio * 0.08);
+      const frequency = 0.002 + index * 0.0008;
+      const phaseSpeed = spd * (0.6 + index * 0.25);
+      const phase = time * phaseSpeed;
+
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+
+      for (let x = 0; x <= W; x += 3) {
+        const y = yBase
+          + Math.sin(x * frequency + phase) * amplitude
+          + Math.sin(x * frequency * 0.5 + phase * 0.7) * amplitude * 0.4
+          + Math.sin(x * frequency * 2.1 + phase * 1.3) * amplitude * 0.15;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+
+      const grad = ctx.createLinearGradient(0, yBase - amplitude, 0, H);
+      const alpha = 0.15 + (1 - layerRatio) * 0.2;
+      grad.addColorStop(0, `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`);
+      grad.addColorStop(0.5, `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha * 0.5})`);
+      grad.addColorStop(1, `rgba(${color[0]}, ${color[1]}, ${color[2]}, 0.02)`);
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    function updateClock() {
+      if (!showClock) return;
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('clockTime').textContent = `${h}:${m}`;
+      const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+      document.getElementById('clockDate').textContent = now.toLocaleDateString('en-US', opts);
+    }
+
+    let animTime = 0;
+    let lastFrame = performance.now();
+
+    function render(ts) {
+      const dt = ts - lastFrame;
+      lastFrame = ts;
+      animTime += dt;
+
+      ctx.fillStyle = '#050508';
+      ctx.fillRect(0, 0, W, H);
+
+      for (let i = 0; i < waveCount; i++) {
+        drawWave(animTime, i, waveCount);
+      }
+
+      updateClock();
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+
+    // Settings
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.waveCount) waveCount = parseInt(cfg.waveCount);
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.palette) palette = cfg.palette;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('waveCountSelect').value = waveCount;
+        document.getElementById('speedSelect').value = speed;
+        document.getElementById('paletteSelect').value = palette;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      applySettings();
+    }
+
+    async function saveSettings() {
+      waveCount = parseInt(document.getElementById('waveCountSelect').value);
+      speed = document.getElementById('speedSelect').value;
+      palette = document.getElementById('paletteSelect').value;
+      showClock = document.getElementById('showClock').checked;
+      applySettings();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ waveCount, speed, palette, showClock }),
+        });
+      } catch {}
+    }
+
+    function applySettings() {
+      const overlay = document.getElementById('clockOverlay');
+      overlay.classList.toggle('visible', showClock);
+    }
+
+    function toggleSettings() {
+      document.getElementById('settingsPanel').classList.toggle('open');
+    }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    // SSE
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    connectSSE();
+  </script>
+</body>
+</html>

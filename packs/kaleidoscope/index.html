@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kaleidoscope</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; height: 100vh; user-select: none; }
+    canvas { display: block; }
+
+    .clock-overlay {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      font-family: 'Inter', sans-serif; font-size: 48px; font-weight: 100;
+      color: rgba(255,255,255,0.08); letter-spacing: 0.05em;
+      z-index: 10; display: none;
+    }
+
+    .settings-btn {
+      position: fixed; top: 16px; right: 16px;
+      background: none; border: none; color: #222;
+      font-size: 22px; cursor: pointer; opacity: 0;
+      transition: opacity 0.3s; z-index: 100;
+    }
+    body:hover .settings-btn { opacity: 1; }
+    .settings-panel {
+      position: fixed; top: 60px; right: 16px;
+      background: rgba(10,5,15,0.95); border: 1px solid #2a1a3a;
+      border-radius: 12px; padding: 20px; display: none;
+      z-index: 100; min-width: 220px; backdrop-filter: blur(20px);
+    }
+    .settings-panel.open { display: block; }
+    .settings-panel h3 {
+      font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 400;
+      color: #6a3a8a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;
+    }
+    .settings-panel label {
+      display: flex; align-items: center; gap: 10px;
+      color: #aa77cc; font-family: 'Inter', sans-serif; font-size: 13px;
+      cursor: pointer; padding: 6px 0;
+    }
+    .settings-panel select {
+      background: #0a0512; color: #aa77cc; border: 1px solid #2a1a3a;
+      border-radius: 6px; padding: 6px 10px; font-size: 13px;
+      font-family: 'Inter', sans-serif; width: 100%; margin-top: 4px;
+    }
+    .settings-panel input[type="checkbox"] { accent-color: #c471ed; width: 16px; height: 16px; }
+    .setting-group { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid #1a0a2a; }
+    .setting-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+
+    .reload-indicator {
+      position: fixed; bottom: 8px; left: 8px;
+      width: 5px; height: 5px; border-radius: 50%; background: #0a0a0a; z-index: 20;
+    }
+    .reload-indicator.connected { background: #c471ed; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="clock-overlay" id="clock"></div>
+
+  <button class="settings-btn" onclick="toggleSettings()">&#9881;</button>
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-group">
+      <h3>Segments</h3>
+      <label>
+        <select id="segments" onchange="saveSettings()">
+          <option value="6">6-fold</option>
+          <option value="8" selected>8-fold</option>
+          <option value="12">12-fold</option>
+          <option value="16">16-fold</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Palette</h3>
+      <label>
+        <select id="palette" onchange="saveSettings()">
+          <option value="jewel">Jewel Tones</option>
+          <option value="ocean">Ocean</option>
+          <option value="fire">Fire</option>
+          <option value="neon">Neon</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Speed</h3>
+      <label>
+        <select id="speed" onchange="saveSettings()">
+          <option value="slow">Slow</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </label>
+    </div>
+    <div class="setting-group">
+      <h3>Display</h3>
+      <label><input type="checkbox" id="showClock" onchange="saveSettings()" /> Show clock</label>
+    </div>
+  </div>
+
+  <div class="reload-indicator" id="sseIndicator"></div>
+
+  <script>
+    const PACK_ID = 'kaleidoscope';
+    const C = document.getElementById('canvas');
+    const ctx = C.getContext('2d');
+    let W, H, cx, cy, radius;
+
+    let segments = 8;
+    let palette = 'jewel';
+    let speed = 'normal';
+    let showClock = false;
+
+    const PALETTES = {
+      jewel: ['#e040fb','#7c4dff','#00e5ff','#00e676','#ffea00','#ff6d00'],
+      ocean: ['#006064','#00838f','#0097a7','#00bcd4','#26c6da','#80deea'],
+      fire:  ['#b71c1c','#d32f2f','#f44336','#ff5722','#ff9800','#ffc107'],
+      neon:  ['#ff00ff','#00ffff','#ff0080','#80ff00','#ffff00','#0080ff'],
+    };
+
+    const SPEED_MAP = { slow: 0.3, normal: 0.7, fast: 1.5 };
+
+    // Moving shapes that get mirrored
+    let shapes = [];
+
+    function resize() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      cx = W / 2;
+      cy = H / 2;
+      radius = Math.min(W, H) * 0.48;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initShapes() {
+      const colors = PALETTES[palette] || PALETTES.jewel;
+      shapes = [];
+      for (let i = 0; i < 15; i++) {
+        shapes.push({
+          angle: Math.random() * Math.PI * 2,
+          dist: Math.random() * radius * 0.8,
+          size: 5 + Math.random() * 20,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          angleSpeed: (Math.random() - 0.5) * 0.02,
+          distSpeed: (Math.random() - 0.5) * 0.5,
+          distPhase: Math.random() * Math.PI * 2,
+          type: Math.floor(Math.random() * 3), // 0=circle, 1=triangle, 2=diamond
+          pulsePhase: Math.random() * Math.PI * 2,
+        });
+      }
+    }
+
+    function drawShape(x, y, size, type, color, alpha) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = color;
+
+      if (type === 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (type === 1) {
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+          const px = x + Math.cos(a) * size;
+          const py = y + Math.sin(a) * size;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x + size * 0.7, y);
+        ctx.lineTo(x, y + size);
+        ctx.lineTo(x - size * 0.7, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001 * (SPEED_MAP[speed] || 0.7);
+
+      // Fade
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+      ctx.fillRect(0, 0, W, H);
+
+      const seg = parseInt(segments);
+      const angleStep = (Math.PI * 2) / seg;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      for (const shape of shapes) {
+        shape.angle += shape.angleSpeed * (SPEED_MAP[speed] || 0.7);
+        const dist = shape.dist + Math.sin(t + shape.distPhase) * radius * 0.2;
+        const pulse = shape.size * (0.8 + Math.sin(t * 2 + shape.pulsePhase) * 0.2);
+
+        const sx = Math.cos(shape.angle) * dist;
+        const sy = Math.sin(shape.angle) * dist;
+
+        // Draw in all segments (mirror symmetry)
+        for (let s = 0; s < seg; s++) {
+          ctx.save();
+          ctx.rotate(angleStep * s);
+
+          // Normal
+          drawShape(sx, sy, pulse, shape.type, shape.color, 0.6);
+
+          // Mirrored
+          ctx.scale(1, -1);
+          drawShape(sx, sy, pulse, shape.type, shape.color, 0.4);
+
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+
+      // Circular mask/vignette
+      const vigGrad = ctx.createRadialGradient(cx, cy, radius * 0.85, cx, cy, radius * 1.1);
+      vigGrad.addColorStop(0, 'transparent');
+      vigGrad.addColorStop(1, '#000');
+      ctx.fillStyle = vigGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      requestAnimationFrame(animate);
+    }
+
+    function updateClock() {
+      const el = document.getElementById('clock');
+      if (!showClock) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      const now = new Date();
+      const h = now.getHours() % 12 || 12;
+      const m = String(now.getMinutes()).padStart(2, '0');
+      el.textContent = `${h}:${m}`;
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config/' + PACK_ID);
+        const cfg = await res.json();
+        if (cfg.segments) segments = cfg.segments;
+        if (cfg.palette) palette = cfg.palette;
+        if (cfg.speed) speed = cfg.speed;
+        if (cfg.showClock !== undefined) showClock = cfg.showClock;
+        document.getElementById('segments').value = segments;
+        document.getElementById('palette').value = palette;
+        document.getElementById('speed').value = speed;
+        document.getElementById('showClock').checked = showClock;
+      } catch {}
+      initShapes();
+      updateClock();
+    }
+
+    async function saveSettings() {
+      segments = document.getElementById('segments').value;
+      palette = document.getElementById('palette').value;
+      speed = document.getElementById('speed').value;
+      showClock = document.getElementById('showClock').checked;
+      initShapes();
+      updateClock();
+      try {
+        await fetch('/api/config/' + PACK_ID, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ segments: parseInt(segments), palette, speed, showClock }),
+        });
+      } catch {}
+    }
+
+    function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+    document.addEventListener('click', (e) => {
+      const p = document.getElementById('settingsPanel');
+      if (!p.contains(e.target) && !e.target.closest('.settings-btn')) p.classList.remove('open');
+    });
+
+    function connectSSE() {
+      const ind = document.getElementById('sseIndicator');
+      const es = new EventSource('/api/events');
+      es.onopen = () => ind.classList.add('connected');
+      es.addEventListener('packChanged', (e) => {
+        const d = JSON.parse(e.data);
+        if (d.activePackId !== PACK_ID) window.location.href = '/';
+      });
+      es.onerror = () => { ind.classList.remove('connected'); es.close(); setTimeout(connectSSE, 5000); };
+    }
+
+    loadSettings();
+    setInterval(updateClock, 30000);
+    requestAnimationFrame(animate);
+    connectSSE();
+  </script>
+</body>
+</html>
